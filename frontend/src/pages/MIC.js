@@ -205,7 +205,7 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
   // ✅ CARGAR DATOS DEL CRT AL MONTAR EL COMPONENTE
   useEffect(() => {
     cargarDatosCRT();
-  }, [crtId, crtNumero]);
+  }, [crtId, crtNumero, cargarDatosCRT]);
 
   const handleChange = (e) => {
     setMic({ ...mic, [e.target.name]: e.target.value });
