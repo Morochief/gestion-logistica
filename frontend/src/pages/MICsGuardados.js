@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -30,7 +30,7 @@ export default function MICsGuardados() {
   });
 
   // Cargar MICs
-  const cargarMics = async (page = 1, filtros = {}) => {
+  const cargarMics = useCallback(async (page = 1, filtros = {}) => {
     setLoading(true);
     try {
       console.log('🔍 Cargando MICs guardados...', { page, filtros });
@@ -59,7 +59,7 @@ export default function MICsGuardados() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [perPage]);
 
   // Cargar estadísticas
   const cargarEstadisticas = async () => {
@@ -78,7 +78,7 @@ export default function MICsGuardados() {
   useEffect(() => {
     cargarMics();
     cargarEstadisticas();
-  }, []);
+  }, [cargarMics]);
 
   // Aplicar filtros
   const aplicarFiltros = () => {

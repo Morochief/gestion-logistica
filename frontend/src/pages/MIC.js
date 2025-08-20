@@ -88,14 +88,14 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
         campo_26_pais: "520-PARAGUAY",
         campo_27_valor_campo16: crt.declaracion_mercaderia || "",
         campo_32_peso_bruto: crt.peso_bruto || "",
-        campo_38: crt.detalles_mercaderia || "",
+        campo_38_datos_campo11_crt: crt.detalles_mercaderia || "",
 
         // ✅ FORMATEAR TRANSPORTADORA COMPLETA
         campo_1_transporte: [
           crt.transportadora_nombre,
           crt.transportadora_direccion,
-          `${crt.transportadora_ciudad} - ${crt.transportadora_pais}`,
-          `${crt.transportadora_tipo_documento}:${crt.transportadora_documento}`,
+          crt.transportadora_ciudad && crt.transportadora_pais ? `${crt.transportadora_ciudad} - ${crt.transportadora_pais}` : (crt.transportadora_ciudad || crt.transportadora_pais),
+          crt.transportadora_tipo_documento && crt.transportadora_documento ? `${crt.transportadora_tipo_documento}: ${crt.transportadora_documento}` : null,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -104,8 +104,8 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
         campo_33_datos_campo1_crt: [
           crt.remitente_nombre,
           crt.remitente_direccion,
-          `${crt.remitente_ciudad} - ${crt.remitente_pais}`,
-          `${crt.remitente_tipo_documento}:${crt.remitente_documento}`,
+          crt.remitente_ciudad && crt.remitente_pais ? `${crt.remitente_ciudad} - ${crt.remitente_pais}` : (crt.remitente_ciudad || crt.remitente_pais),
+          crt.remitente_tipo_documento && crt.remitente_documento ? `${crt.remitente_tipo_documento}: ${crt.remitente_documento}` : null,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -114,8 +114,8 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
         campo_34_datos_campo4_crt: [
           crt.destinatario_nombre,
           crt.destinatario_direccion,
-          `${crt.destinatario_ciudad} - ${crt.destinatario_pais}`,
-          `${crt.destinatario_tipo_documento}:${crt.destinatario_documento}`,
+          crt.destinatario_ciudad && crt.destinatario_pais ? `${crt.destinatario_ciudad} - ${crt.destinatario_pais}` : (crt.destinatario_ciudad || crt.destinatario_pais),
+          crt.destinatario_tipo_documento && crt.destinatario_documento ? `${crt.destinatario_tipo_documento}: ${crt.destinatario_documento}` : null,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -125,16 +125,16 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
           ? [
               crt.consignatario_nombre,
               crt.consignatario_direccion,
-              `${crt.consignatario_ciudad} - ${crt.consignatario_pais}`,
-              `${crt.consignatario_tipo_documento}:${crt.consignatario_documento}`,
+              crt.consignatario_ciudad && crt.consignatario_pais ? `${crt.consignatario_ciudad} - ${crt.consignatario_pais}` : (crt.consignatario_ciudad || crt.consignatario_pais),
+              crt.consignatario_tipo_documento && crt.consignatario_documento ? `${crt.consignatario_tipo_documento}: ${crt.consignatario_documento}` : null,
             ]
               .filter(Boolean)
               .join("\n")
           : [
               crt.destinatario_nombre,
               crt.destinatario_direccion,
-              `${crt.destinatario_ciudad} - ${crt.destinatario_pais}`,
-              `${crt.destinatario_tipo_documento}:${crt.destinatario_documento}`,
+              crt.destinatario_ciudad && crt.destinatario_pais ? `${crt.destinatario_ciudad} - ${crt.destinatario_pais}` : (crt.destinatario_ciudad || crt.destinatario_pais),
+              crt.destinatario_tipo_documento && crt.destinatario_documento ? `${crt.destinatario_tipo_documento}: ${crt.destinatario_documento}` : null,
             ]
               .filter(Boolean)
               .join("\n"),
@@ -151,8 +151,8 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
         campo_9_datos_transporte: [
           crt.transportadora_nombre,
           crt.transportadora_direccion,
-          `${crt.transportadora_ciudad} - ${crt.transportadora_pais}`,
-          `${crt.transportadora_tipo_documento}:${crt.transportadora_documento}`,
+          crt.transportadora_ciudad && crt.transportadora_pais ? `${crt.transportadora_ciudad} - ${crt.transportadora_pais}` : (crt.transportadora_ciudad || crt.transportadora_pais),
+          crt.transportadora_tipo_documento && crt.transportadora_documento ? `${crt.transportadora_tipo_documento}: ${crt.transportadora_documento}` : null,
         ]
           .filter(Boolean)
           .join("\n"),
@@ -178,7 +178,7 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
         "campo_26_pais",
         "campo_27_valor_campo16",
         "campo_32_peso_bruto",
-        "campo_38",
+        "campo_38_datos_campo11_crt",
         "campo_33_datos_campo1_crt",
         "campo_34_datos_campo4_crt",
         "campo_35_datos_campo6_crt",
@@ -383,7 +383,7 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
     "campo_30_tipo_bultos",
     "campo_31_cantidad",
     "campo_37_valor_manual",
-    "campo_38",
+    "campo_38_datos_campo11_crt",
     "campo_40_tramo",
   ];
 
@@ -974,13 +974,13 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
         <label style={{ gridColumn: "span 2" }}>
           <div className="field-header">
             Campo 38 (Detalles de Mercadería)
-            {esCampoAutocompletado("campo_38") && (
+            {esCampoAutocompletado("campo_38_datos_campo11_crt") && (
               <span className="auto-badge">✅ Auto</span>
             )}
           </div>
           <textarea
-            name="campo_38"
-            value={mic.campo_38}
+            name="campo_38_datos_campo11_crt"
+            value={mic.campo_38_datos_campo11_crt}
             onChange={handleChange}
             className="inputPro"
             rows={4}
@@ -988,7 +988,7 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
             placeholder="Auto-completado desde el Campo 11 del CRT"
             maxLength={1500}
           />
-          {esCampoAutocompletado("campo_38") && (
+          {esCampoAutocompletado("campo_38_datos_campo11_crt") && (
             <small className="auto-help">
               Auto-completado desde detalles_mercaderia del CRT
             </small>

@@ -63,34 +63,8 @@ function ListarCRT() {
     return isNaN(numero) ? "" : numero;
   };
 
-  // Función mejorada para manejar entrada numérica con comas decimales naturales
-  const manejarEntradaNumerica = (e, callback) => {
-    let valor = e.target.value;
-    
-    // Permitir números, una sola coma decimal, y signos negativos al inicio
-    const regex = /^-?[\d]*[,]?[\d]*$/;
-    if (!regex.test(valor)) {
-      return; // No actualizar si no es válido
-    }
 
-    // Asegurar que solo haya una coma decimal
-    const partesDecimales = valor.split(',').length - 1;
-    if (partesDecimales > 1) {
-      return; // No permitir más de una coma
-    }
-
-    // Limitar decimales a 2 dígitos después de la coma
-    if (valor.includes(',')) {
-      const partes = valor.split(',');
-      if (partes[1] && partes[1].length > 2) {
-        valor = partes[0] + ',' + partes[1].substring(0, 2);
-      }
-    }
-
-    callback(valor);
-  };
-
-  // Nueva función para entrada completamente natural de comas
+  // Función para entrada completamente natural de comas
   const manejarEntradaNaturalComa = (e, callback) => {
     let valor = e.target.value;
     

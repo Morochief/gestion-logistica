@@ -308,7 +308,7 @@ function CRT() {
 
   const handleValorIncotermChange = (e) => {
     let val = e.target.value.replace(/[^\d,]/g, "");
-    val = val.replace(/(,)(?=.*\,)/g, "");
+    val = val.replace(/(,)(?=.*,)/g, "");
     setForm((f) => ({ ...f, valor_incoterm: val }));
   };
   const handleValorIncotermBlur = (e) => {
@@ -322,7 +322,7 @@ function CRT() {
 
   const handlePesoInput = (e) => {
     let v = e.target.value.replace(/[^\d,]/g, "");
-    v = v.replace(/(,)(?=.*\,)/g, "");
+    v = v.replace(/(,)(?=.*,)/g, "");
     setForm((f) => ({ ...f, [e.target.name]: v }));
   };
   const handlePesoBlur = (e) => {
@@ -336,7 +336,7 @@ function CRT() {
 
   const handleVolumenInput = (e) => {
     let v = e.target.value.replace(/[^\d,]/g, "");
-    v = v.replace(/(,)(?=.*\,)/g, "");
+    v = v.replace(/(,)(?=.*,)/g, "");
     setForm((f) => ({ ...f, volumen: v }));
   };
   const handleVolumenBlur = (e) => {
@@ -350,7 +350,7 @@ function CRT() {
 
   const handleDeclaracionInput = (e) => {
     let v = e.target.value.replace(/[^\d,]/g, "");
-    v = v.replace(/(,)(?=.*\,)/g, "");
+    v = v.replace(/(,)(?=.*,)/g, "");
     setForm((f) => ({ ...f, declaracion_mercaderia: v }));
   };
   const handleDeclaracionBlur = (e) => {

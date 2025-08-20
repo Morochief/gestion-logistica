@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { Search, Plus, Edit3, Trash2, Building2, MapPin, Flag, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
+import React, { useEffect, useState, useCallback } from "react";
+import { Search, Plus, Edit3, Trash2, Building2, Flag, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
 // Configuración de la API
 const API_BASE_URL = "http://localhost:5000/api"; // Ajusta según tu configuración
@@ -413,7 +413,7 @@ function Ciudades() {
   };
 
   // Cargar países desde la API
-  const fetchPaises = async () => {
+  const fetchPaises = useCallback(async () => {
     try {
       const response = await apiCall('/crts/data/paises');
       setPaises(response.items || []);
@@ -429,10 +429,10 @@ function Ciudades() {
         { id: 5, nombre: 'Bolivia' },
       ]);
     }
-  };
+  }, []);
 
   // Cargar ciudades desde la API
-  const fetchCiudades = async () => {
+  const fetchCiudades = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await apiCall('/crts/data/ciudades');
@@ -453,7 +453,7 @@ function Ciudades() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     const loadData = async () => {
@@ -461,7 +461,7 @@ function Ciudades() {
       await fetchCiudades(); // Luego cargar ciudades
     };
     loadData();
-  }, []);
+  }, [fetchPaises, fetchCiudades]);
 
   const handleAdd = () => {
     setEditCiudad(null);
@@ -493,9 +493,9 @@ function Ciudades() {
       
       if (editCiudad) {
         // Actualizar ciudad existente
-        const response = await apiCall(`/ciudades/${editCiudad.id}`, 'PUT', data);
-        setCiudades(prev => prev.map(c => 
-          c.id === editCiudad.id 
+        await apiCall(`/ciudades/${editCiudad.id}`, 'PUT', data);
+        setCiudades(prev => prev.map(c =>
+          c.id === editCiudad.id
             ? { ...c, ...data, pais: paisSelected?.nombre || '' }
             : c
         ));
@@ -503,10 +503,10 @@ function Ciudades() {
       } else {
         // Crear nueva ciudad
         const response = await apiCall('/ciudades', 'POST', data);
-        const newCiudad = { 
-          ...data, 
-          id: response.id || Date.now(), 
-          pais: paisSelected?.nombre || '' 
+        const newCiudad = {
+          ...data,
+          id: response.id || Date.now(),
+          pais: paisSelected?.nombre || ''
         };
         setCiudades(prev => [...prev, newCiudad]);
         showNotification('Ciudad creada exitosamente', 'success');
@@ -521,7 +521,6 @@ function Ciudades() {
   // Calcular estadísticas
   const totalCiudades = ciudades.length;
   const paisesConCiudades = [...new Set(ciudades.map(c => c.pais_id))].length;
-  const ciudadMasReciente = ciudades[ciudades.length - 1]?.nombre || 'N/A';
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 via-teal-50 to-cyan-50">

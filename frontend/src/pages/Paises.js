@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Search, Plus, Edit3, Trash2, Globe, MapPin, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
 // Configuración de la API
@@ -389,7 +389,7 @@ function Paises() {
   };
 
   // Cargar países desde la API
-  const fetchPaises = async () => {
+  const fetchPaises = useCallback(async () => {
     setIsLoading(true);
     try {
       const response = await apiCall('/crts/data/paises');
@@ -409,11 +409,11 @@ function Paises() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchPaises();
-  }, []);
+  }, [fetchPaises]);
 
   const handleAdd = () => {
     setEditPais(null);
@@ -443,7 +443,7 @@ function Paises() {
     try {
       if (editPais) {
         // Actualizar país existente
-        const response = await apiCall(`/paises/${editPais.id}`, 'PUT', data);
+        await apiCall(`/paises/${editPais.id}`, 'PUT', data);
         setPaises(prev => prev.map(p => p.id === editPais.id ? { ...p, ...data } : p));
         showNotification('País actualizado exitosamente', 'success');
       } else {

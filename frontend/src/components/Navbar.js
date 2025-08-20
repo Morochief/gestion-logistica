@@ -1,6 +1,6 @@
 import React from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { isLoggedIn, logout } from "../utils/auth";
+import { logout } from "../utils/auth";
 import {
   FaHome,
   FaUser,
@@ -126,7 +126,7 @@ function Navbar() {
       >
         <FaCogs /> Parámetros
       </Link>
-      // En el menú de navegación
+      {/* En el menú de navegación */}
       <Link to="/mics-guardados" className="nav-link">
         📋 MICs Guardados
       </Link>
