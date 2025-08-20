@@ -57,6 +57,151 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
   const [camposAutocompletados, setCamposAutocompletados] = useState([]);
   const [datosCRT, setDatosCRT] = useState(null);
 
+  // ✅ CAMBIAR ESTA FUNCIÓN en MIC.js
+  const cargarDatosCRT = async () => {
+    if (!crtId && !crtNumero) {
+      console.log("⚠️ No se proporcionó crtId ni crtNumero");
+      return;
+    }
+
+    setCargandoCRT(true);
+
+    try {
+      // ✅ USAR MICROSERVICIO GO en lugar del backend Python
+      const endpoint = `http://localhost:8080/api/crts/${crtId || crtNumero}`;
+      console.log("🔍 Cargando datos del CRT desde microservicio Go:", endpoint);
+
+      const response = await axios.get(endpoint);
+      const crt = response.data;
+
+      console.log("📦 Datos del CRT recibidos desde Go:", crt);
+
+      // ✅ MAPEAR DATOS DEL MICROSERVICIO GO A CAMPOS MIC
+      const datosMapeados = {
+        // Datos básicos
+        campo_6_fecha:
+          crt.fecha_emision || new Date().toISOString().split("T")[0],
+        campo_8_destino: crt.lugar_entrega || "",
+        campo_23_numero_campo2_crt: crt.numero_crt || "",
+        campo_25_moneda: crt.moneda_nombre || "DOLAR AMERICANO",
+        campo_26_pais: "520-PARAGUAY",
+        campo_27_valor_campo16: crt.declaracion_mercaderia || "",
+        campo_32_peso_bruto: crt.peso_bruto || "",
+        campo_38: crt.detalles_mercaderia || "",
+
+        // ✅ FORMATEAR TRANSPORTADORA COMPLETA
+        campo_1_transporte: [
+          crt.transportadora_nombre,
+          crt.transportadora_direccion,
+          `${crt.transportadora_ciudad} - ${crt.transportadora_pais}`,
+          `${crt.transportadora_tipo_documento}:${crt.transportadora_documento}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+
+        // ✅ FORMATEAR REMITENTE COMPLETO
+        campo_33_datos_campo1_crt: [
+          crt.remitente_nombre,
+          crt.remitente_direccion,
+          `${crt.remitente_ciudad} - ${crt.remitente_pais}`,
+          `${crt.remitente_tipo_documento}:${crt.remitente_documento}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+
+        // ✅ FORMATEAR DESTINATARIO COMPLETO
+        campo_34_datos_campo4_crt: [
+          crt.destinatario_nombre,
+          crt.destinatario_direccion,
+          `${crt.destinatario_ciudad} - ${crt.destinatario_pais}`,
+          `${crt.destinatario_tipo_documento}:${crt.destinatario_documento}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+
+        // ✅ FORMATEAR CONSIGNATARIO COMPLETO (o usar destinatario si no hay)
+        campo_35_datos_campo6_crt: crt.consignatario_nombre
+          ? [
+              crt.consignatario_nombre,
+              crt.consignatario_direccion,
+              `${crt.consignatario_ciudad} - ${crt.consignatario_pais}`,
+              `${crt.consignatario_tipo_documento}:${crt.consignatario_documento}`,
+            ]
+              .filter(Boolean)
+              .join("\n")
+          : [
+              crt.destinatario_nombre,
+              crt.destinatario_direccion,
+              `${crt.destinatario_ciudad} - ${crt.destinatario_pais}`,
+              `${crt.destinatario_tipo_documento}:${crt.destinatario_documento}`,
+            ]
+              .filter(Boolean)
+              .join("\n"),
+
+        // ✅ DOCUMENTOS
+        campo_36_factura_despacho: [
+          crt.factura_exportacion ? `Factura: ${crt.factura_exportacion}` : "",
+          crt.nro_despacho ? `Despacho: ${crt.nro_despacho}` : "",
+        ]
+          .filter(Boolean)
+          .join(" | "),
+
+        // Campo 9 = Campo 1 (transportadora)
+        campo_9_datos_transporte: [
+          crt.transportadora_nombre,
+          crt.transportadora_direccion,
+          `${crt.transportadora_ciudad} - ${crt.transportadora_pais}`,
+          `${crt.transportadora_tipo_documento}:${crt.transportadora_documento}`,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      };
+
+      // ✅ ACTUALIZAR ESTADO CON DATOS MAPEADOS
+      setMic((prev) => ({
+        ...prev,
+        ...datosMapeados,
+        campo_4_estado: prev.campo_4_estado || "PROVISORIO",
+        campo_5_hoja: prev.campo_5_hoja || "1 / 1",
+        campo_13_siempre_45: prev.campo_13_siempre_45 || "45 TON",
+      }));
+
+      setDatosCRT(crt);
+      setCamposAutocompletados([
+        "campo_1_transporte",
+        "campo_6_fecha",
+        "campo_8_destino",
+        "campo_9_datos_transporte",
+        "campo_23_numero_campo2_crt",
+        "campo_25_moneda",
+        "campo_26_pais",
+        "campo_27_valor_campo16",
+        "campo_32_peso_bruto",
+        "campo_38",
+        "campo_33_datos_campo1_crt",
+        "campo_34_datos_campo4_crt",
+        "campo_35_datos_campo6_crt",
+        "campo_36_factura_despacho",
+      ]);
+
+      toast.success(
+        `✅ CRT ${crt.numero_crt} cargado desde microservicio Go - ${
+          Object.keys(datosMapeados).length
+        } campos auto-completados`
+      );
+    } catch (error) {
+      console.error("❌ Error cargando datos del CRT desde Go:", error);
+      const errorMsg =
+        error.response?.status === 404
+          ? `CRT ID ${crtId || crtNumero} no encontrado en microservicio Go`
+          : `Error de conexión con microservicio Go: ${error.message}`;
+      toast.error(`❌ ${errorMsg}`);
+    } finally {
+      setCargandoCRT(false);
+    }
+  };
+
+
   // ✅ CARGAR DATOS DEL CRT AL MONTAR EL COMPONENTE
   useEffect(() => {
     cargarDatosCRT();
@@ -999,148 +1144,3 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
     </form>
   );
 }
-// ✅ CAMBIAR ESTA FUNCIÓN en MIC.js
-const cargarDatosCRT = async () => {
-  if (!crtId && !crtNumero) {
-    console.log("⚠️ No se proporcionó crtId ni crtNumero");
-    return;
-  }
-
-  setCargandoCRT(true);
-
-  try {
-    // ✅ USAR MICROSERVICIO GO en lugar del backend Python
-    const endpoint = `http://localhost:8080/api/crts/${crtId || crtNumero}`;
-    console.log("🔍 Cargando datos del CRT desde microservicio Go:", endpoint);
-
-    const response = await axios.get(endpoint);
-    const crt = response.data;
-
-    console.log("📦 Datos del CRT recibidos desde Go:", crt);
-
-    // ✅ MAPEAR DATOS DEL MICROSERVICIO GO A CAMPOS MIC
-    const datosMapeados = {
-      // Datos básicos
-      campo_6_fecha:
-        crt.fecha_emision || new Date().toISOString().split("T")[0],
-      campo_8_destino: crt.lugar_entrega || "",
-      campo_23_numero_campo2_crt: crt.numero_crt || "",
-      campo_25_moneda: crt.moneda_nombre || "DOLAR AMERICANO",
-      campo_26_pais: "520-PARAGUAY",
-      campo_27_valor_campo16: crt.declaracion_mercaderia || "",
-      campo_32_peso_bruto: crt.peso_bruto || "",
-      campo_38: crt.detalles_mercaderia || "",
-
-      // ✅ FORMATEAR TRANSPORTADORA COMPLETA
-      campo_1_transporte: [
-        crt.transportadora_nombre,
-        crt.transportadora_direccion,
-        `${crt.transportadora_ciudad} - ${crt.transportadora_pais}`,
-        `${crt.transportadora_tipo_documento}:${crt.transportadora_documento}`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-
-      // ✅ FORMATEAR REMITENTE COMPLETO
-      campo_33_datos_campo1_crt: [
-        crt.remitente_nombre,
-        crt.remitente_direccion,
-        `${crt.remitente_ciudad} - ${crt.remitente_pais}`,
-        `${crt.remitente_tipo_documento}:${crt.remitente_documento}`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-
-      // ✅ FORMATEAR DESTINATARIO COMPLETO
-      campo_34_datos_campo4_crt: [
-        crt.destinatario_nombre,
-        crt.destinatario_direccion,
-        `${crt.destinatario_ciudad} - ${crt.destinatario_pais}`,
-        `${crt.destinatario_tipo_documento}:${crt.destinatario_documento}`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-
-      // ✅ FORMATEAR CONSIGNATARIO COMPLETO (o usar destinatario si no hay)
-      campo_35_datos_campo6_crt: crt.consignatario_nombre
-        ? [
-            crt.consignatario_nombre,
-            crt.consignatario_direccion,
-            `${crt.consignatario_ciudad} - ${crt.consignatario_pais}`,
-            `${crt.consignatario_tipo_documento}:${crt.consignatario_documento}`,
-          ]
-            .filter(Boolean)
-            .join("\n")
-        : [
-            crt.destinatario_nombre,
-            crt.destinatario_direccion,
-            `${crt.destinatario_ciudad} - ${crt.destinatario_pais}`,
-            `${crt.destinatario_tipo_documento}:${crt.destinatario_documento}`,
-          ]
-            .filter(Boolean)
-            .join("\n"),
-
-      // ✅ DOCUMENTOS
-      campo_36_factura_despacho: [
-        crt.factura_exportacion ? `Factura: ${crt.factura_exportacion}` : "",
-        crt.nro_despacho ? `Despacho: ${crt.nro_despacho}` : "",
-      ]
-        .filter(Boolean)
-        .join(" | "),
-
-      // Campo 9 = Campo 1 (transportadora)
-      campo_9_datos_transporte: [
-        crt.transportadora_nombre,
-        crt.transportadora_direccion,
-        `${crt.transportadora_ciudad} - ${crt.transportadora_pais}`,
-        `${crt.transportadora_tipo_documento}:${crt.transportadora_documento}`,
-      ]
-        .filter(Boolean)
-        .join("\n"),
-    };
-
-    // ✅ ACTUALIZAR ESTADO CON DATOS MAPEADOS
-    setMic((prev) => ({
-      ...prev,
-      ...datosMapeados,
-      campo_4_estado: prev.campo_4_estado || "PROVISORIO",
-      campo_5_hoja: prev.campo_5_hoja || "1 / 1",
-      campo_13_siempre_45: prev.campo_13_siempre_45 || "45 TON",
-    }));
-
-    setDatosCRT(crt);
-    setCamposAutocompletados([
-      "campo_1_transporte",
-      "campo_6_fecha",
-      "campo_8_destino",
-      "campo_9_datos_transporte",
-      "campo_23_numero_campo2_crt",
-      "campo_25_moneda",
-      "campo_26_pais",
-      "campo_27_valor_campo16",
-      "campo_32_peso_bruto",
-      "campo_38",
-      "campo_33_datos_campo1_crt",
-      "campo_34_datos_campo4_crt",
-      "campo_35_datos_campo6_crt",
-      "campo_36_factura_despacho",
-    ]);
-
-    toast.success(
-      `✅ CRT ${crt.numero_crt} cargado desde microservicio Go - ${
-        Object.keys(datosMapeados).length
-      } campos auto-completados`
-    );
-  } catch (error) {
-    console.error("❌ Error cargando datos del CRT desde Go:", error);
-    const errorMsg =
-      error.response?.status === 404
-        ? `CRT ID ${crtId || crtNumero} no encontrado en microservicio Go`
-        : `Error de conexión con microservicio Go: ${error.message}`;
-    toast.error(`❌ ${errorMsg}`);
-  } finally {
-    setCargandoCRT(false);
-  }
-};
-
-// ✅
