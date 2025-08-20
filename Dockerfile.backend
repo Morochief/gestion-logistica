@@ -1,0 +1,28 @@
+FROM python:3.11-slim
+
+# System deps for reportlab/Pillow and psycopg2
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libfreetype6-dev \
+    libjpeg62-turbo-dev \
+    zlib1g-dev \
+    libpng-dev \
+    libpq-dev \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python deps (allow later override by bind mount install-on-start)
+COPY backend/requirements.txt /app/requirements.txt
+RUN pip install --upgrade pip && pip install --no-cache-dir -r /app/requirements.txt
+
+# Copy backend source (will be overridden by bind mount in dev)
+COPY backend/ /app/
+
+# Env for Flask
+ENV FLASK_APP=wsgi.py
+ENV FLASK_ENV=development
+ENV PYTHONUNBUFFERED=1
+
+# Default command is overridden by docker-compose to ensure deps are installed with bind-mount
+CMD ["flask", "run", "--host=0.0.0.0", "--port=5000"]

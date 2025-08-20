@@ -1,0 +1,76 @@
+services:
+  db:
+    image: postgres:14
+    restart: always
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: Mjjagkaz012.
+      POSTGRES_DB: logistica
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    # Dev: ensure deps inside container match bind-mounted requirements
+    command: sh -c "pip install --no-cache-dir -r requirements.txt && flask run --host=0.0.0.0 --port=5000"
+    working_dir: /app
+    volumes:
+      - ./backend:/app
+    ports:
+      - "5000:5000"
+    depends_on:
+      - db
+    environment:
+      FLASK_ENV: development
+      FLASK_APP: wsgi.py
+      DATABASE_URL: postgresql://postgres:Mjjagkaz012.@db:5432/logistica
+      JWT_SECRET_KEY: supersecretkey
+      PYTHONUNBUFFERED: "1"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: ../Dockerfile.frontend
+    working_dir: /app
+    # CRA dev server
+    command: npm start
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      # If you switch to proxy, you can add: WDS_SOCKET_PORT=0 (for docker desktop)
+      CHOKIDAR_USEPOLLING: "true"
+
+  go-crt-api:
+    build:
+      context: ./go-crt-api
+      dockerfile: Dockerfile
+    environment:
+      # Use container DNS name 'db'
+      DATABASE_URL: postgres://postgres:Mjjagkaz012.@db:5432/logistica?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      - db
+    volumes:
+      - ./go-crt-api:/src
+
+  pdf-service:
+    build:
+      context: ./go-crt-api
+      dockerfile: Dockerfile.pdf
+    ports:
+      - "3002:3002"
+    volumes:
+      - ./go-crt-api:/src
+
+volumes:
+  pgdata:

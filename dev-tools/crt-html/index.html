@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Coordenadas sobre Plantilla CRT</title>
+  <style>
+    body {
+      background: #fff;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .contenedor {
+      position: relative;
+      width: 595px;   /* Tamaño real del PDF */
+      height: 842px;
+      background: url('plantilla_crt_grid.png') no-repeat 0 0;
+      background-size: 595px 842px;
+      opacity: 0.3;
+      box-shadow: 0 0 12px #0004;
+      border: 2px solid #333;
+    }
+    .campo {
+      position: absolute;
+      border: 2px solid #000;
+      pointer-events: none;
+      box-sizing: border-box;
+      opacity: 0.8;
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 7px;
+      color: #111;
+      padding: 2px;
+    }
+    .campo:nth-child(1)  { background: rgba(255, 0, 0, 0.15); }     /* Rojo */
+    .campo:nth-child(2)  { background: rgba(0, 255, 0, 0.15); }     /* Verde */
+    .campo:nth-child(3)  { background: rgba(0, 0, 255, 0.15); }     /* Azul */
+    .campo:nth-child(4)  { background: rgba(255, 255, 0, 0.15); }   /* Amarillo */
+    .campo:nth-child(5)  { background: rgba(255, 0, 255, 0.15); }   /* Magenta */
+    .campo:nth-child(6)  { background: rgba(0, 255, 255, 0.15); }   /* Cian */
+    .campo:nth-child(7)  { background: rgba(255, 165, 0, 0.15); }   /* Naranja */
+    .campo:nth-child(8)  { background: rgba(128, 0, 128, 0.15); }   /* Púrpura */
+    .campo:nth-child(9)  { background: rgba(0, 128, 128, 0.15); }   /* Verde azulado */
+    .campo:nth-child(10) { background: rgba(128, 128, 0, 0.15); }   /* Oliva */
+    .campo:nth-child(11) { background: rgba(255, 192, 203, 0.15); } /* Rosa */
+    .campo:nth-child(12) { background: rgba(173, 216, 230, 0.15); } /* Azul claro */
+    .campo:nth-child(13) { background: rgba(255, 99, 71, 0.15); }   /* Tomate */
+    .campo:nth-child(14) { background: rgba(60, 179, 113, 0.15); }  /* Verde mar */
+    .campo:nth-child(15) { background: rgba(123, 104, 238, 0.15); } /* Azul violeta */
+    .campo:nth-child(16) { background: rgba(255, 215, 0, 0.15); }   /* Oro */
+    .campo:nth-child(17) { background: rgba(199, 21, 133, 0.15); }  /* Rojo violeta */
+    .campo:nth-child(18) { background: rgba(70, 130, 180, 0.15); }  /* Azul acero */
+    .campo:nth-child(19) { background: rgba(255, 140, 0, 0.15); }   /* Naranja oscuro */
+    .campo:nth-child(20) { background: rgba(34, 139, 34, 0.15); }   /* Verde bosque */
+    .campo:nth-child(21) { background: rgba(75, 0, 130, 0.15); }    /* Índigo */
+    .campo:nth-child(22) { background: rgba(220, 20, 60, 0.15); }   /* Carmesí */
+    .campo:nth-child(23) { background: rgba(0, 206, 209, 0.15); }   /* Turquesa */
+    .campo:nth-child(24) { background: rgba(218, 112, 214, 0.15); } /* Orquídea */
+  </style>
+</head>
+<body>
+  <div class="contenedor">
+    <div class="campo" style="left:29px; top:29px; width:540px; height:50px;">Encabezado</div>
+    <div class="campo" style="left:29px; top:77px; width:269px; height:64px;">Campo 1</div>
+    <div class="campo" style="left:296.3px; top:77px; width:272.5px; height:22px;">Campo 2</div>
+    <div class="campo" style="left:29px; top:139px; width:269px; height:61px;">Campo 4</div>
+    <div class="campo" style="left:29px; top:198px; width:269px; height:62px;">Campo 6</div>
+    <div class="campo" style="left:29px; top:258px; width:269px; height:61px;">Campo 9</div>
+    <div class="campo" style="left:296.3px; top:97px; width:272.5px; height:66px;">Campo 3</div>
+    <div class="campo" style="left:296.3px; top:161px; width:272.5px; height:39px;">Campo 5</div>
+    <div class="campo" style="left:296.3px; top:198px; width:272.5px; height:49px;">Campo 7</div>
+    <div class="campo" style="left:296.3px; top:246px; width:272.5px; height:37px;">Campo 8</div>
+    <div class="campo" style="left:296.3px; top:281px; width:272.5px; height:38px;">Campo 10</div>
+    <div class="campo" style="left:29px; top:317.5px; width:383.5px; height:118px;">Campo 11</div>
+    <div class="campo" style="left:411px; top:318px; width:158px; height:38px;">Campo 12</div>
+    <div class="campo" style="left:411px; top:354px; width:158px; height:20px;">Campo 13</div>
+    <div class="campo" style="left:411px; top:372px; width:158px; height:63px;">Campo 14</div>
+    <div class="campo" style="left:296.3px; top:434px; width:272.5px; height:18.5px;">Campo 16</div>
+    <div class="campo" style="left:296.3px; top:451.2px; width:272.5px; height:72.5px;">Campo 17</div>
+    <div class="campo" style="left:296.3px; top:522px; width:272.5px; height:59.5px;">Campo 18</div>
+    <div class="campo" style="left:296.3px; top:580px; width:272.5px; height:76px;">Campo 22</div>
+    <div class="campo" style="left:29px; top:655px; width:269px; height:108px;">Campo 23</div>
+    <div class="campo" style="left:296.3px; top:655px; width:272.5px; height:108px;">Campo 24</div>
+    <div class="campo" style="left:29px; top:580px; width:269px; height:77px;">Campo 21</div>
+    <div class="campo" style="left:29px; top:555px; width:269px; height:27px;">Campo 20</div>
+    <div class="campo" style="left:29px; top:533px; width:269px; height:24px;">Campo 19</div>
+    <div class="campo" style="left:29px; top:522px; width:269px; height:13px;">Campo 15 Total</div>
+    <div class="campo" style="left:29px; top:434px; width:107px; height:18.5px;">Campo 15</div>
+    <div class="campo" style="left:29px; top:450px; width:107px; height:73.5px;">Campo 15.1</div>
+    <div class="campo" style="left:134px; top:434px; width:70px; height:18.5px;">Campo 15.2</div>
+    <div class="campo" style="left:134px; top:450px; width:70px; height:73.5px;">Campo 15.3</div>
+    <div class="campo" style="left:202px; top:434px; width:31px; height:18.5px;">Campo 15.4</div>
+    <div class="campo" style="left:202px; top:450px; width:31px; height:73.5px;">Campo 15.5</div>
+    <div class="campo" style="left:231px; top:434px; width:67px; height:18.5px;">Campo 15.6</div>
+    <div class="campo" style="left:231px; top:450px; width:67px; height:73.5px;">Campo 15.7</div>
+    <div class="campo" style="left:29px; top:761px; width:540px; height:17px;">Pie de pagina</div>
+
+  </div>
+</body>
+</html>

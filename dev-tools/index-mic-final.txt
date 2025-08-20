@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Prueba de coordenadas sobre plantilla.png</title>
+  <style>
+    body {
+      background: #fff;
+      margin: 0;
+      padding: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .contenedor {
+      position: relative;
+      width: 1700px;
+      height: 2800px;
+      background-size: 1700px 2800px;
+      box-shadow: 0 0 24px #0006;
+      border: 2px solid #333;
+    }
+    .encabezado {
+      position: absolute;
+      left: 55px;
+      top: 55px;
+      width: 1616px;
+      height: 108.5px;
+      border: 2px solid #000;
+      box-sizing: border-box;
+      pointer-events: none;
+    }
+    .encabezado-micdta {
+      position: absolute;
+      left: 24px;
+      top: 15px;
+      width: 235px;
+      height: 70px;
+      border: 2px solid #000;
+      box-sizing: border-box;
+      background: #fff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .encabezado-micdta-text {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 1.35em;
+      font-weight: bold;
+      color: #111;
+      letter-spacing: 1px;
+    }
+    .encabezado-titulos {
+      position: absolute;
+      left: 280px;
+      top: 18px;
+      width: 1300px;
+      height: 76px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .encabezado-main-title {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 1.50em;
+      font-weight: bold;
+      color: #111;
+      text-align: left;
+      line-height: 1.2;
+    }
+    .encabezado-secondary-title {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 1.50em;
+      color: #111;
+      text-align: left;
+      line-height: 1.2;
+      font-weight: normal;
+      margin-top: 3px;
+    }
+    /* Resto del CSS original y campos */
+    .titulo-campo {
+      font-family: Arial, Helvetica, sans-serif;
+      font-size: 15px;
+      font-weight: bold;
+      margin: 4px 0 1px 8px;
+      color: #111;
+      line-height: 1.15;
+      text-align: left;
+    }
+    .titulo-secundario {
+      font-size: 13px;
+      font-weight: normal;
+      color: #444;
+      line-height: 1.0;
+      margin-left: 0;
+      margin-bottom: 2px;
+      display: block;
+    }
+    .campo-1, .campo-2, .campo-3, .campo-4, .campo-5, .campo-6, .campo-7, .campo-8, .campo-9, .campo-10, .campo-11,
+    .campo-12, .campo-13, .campo-14, .campo-15, .campo-16, .campo-17, .campo-18, .campo-19, .campo-20, .campo-21, .campo-22,
+    .campo-23, .campo-24, .campo-25, .campo-26, .campo-27, .campo-28, .campo-29, .campo-30, .campo-31, .campo-32, .campo-33,
+    .campo-34, .campo-35, .campo-36, .campo-37, .campo-38, .campo-39, .campo-40, .campo-41 {
+      border: 2px solid #000 !important;
+      box-sizing: border-box;
+      pointer-events: none;
+      background: none !important;
+    }
+    /* ... (NO TOCO NADA MÁS) ... */
+    .rectangulo-grande { position: absolute; left: 55px; top: 55px; width: 1616.75px; height: 2672.75px; border: 2px solid #000; box-sizing: border-box; pointer-events: none; }
+    .campo-1 { position: absolute; left: 55px; top: 162px; width: 863px; height: 450px; }
+    .campo-2 { position: absolute; left: 55px; top: 610px; width: 861px; height: 142px; }
+    .campo-3 { position: absolute; left: 916px; top: 162px; width: 389px; height: 169px; }
+    .campo-4 { position: absolute; left: 1305px; top: 162px; width: 365px; height: 167px; }
+    .campo-5 { position: absolute; left: 916px; top: 330px; width: 388px; height: 115px; }
+    .campo-6 { position: absolute; left: 1305px; top: 330px; width: 365px; height: 115px; }
+    .campo-7 { position: absolute; left: 916px; top: 445px; width: 752px; height: 166px; }
+    .campo-8 { position: absolute; left: 916px; top: 610px; width: 752px; height: 142px; }
+    .campo-9 { position: absolute; left: 55px; top: 750px; width: 861px; height: 165px; }
+    .campo-10 { position: absolute; left: 55px; top: 915px; width: 417px; height: 142px; }
+    .campo-11 { position: absolute; left: 470px; top: 915px; width: 445px; height: 142px; }
+    .campo-12 { position: absolute; left: 55px; top: 1055px; width: 417px; height: 142px; }
+    .campo-13 { position: absolute; left: 470px; top: 1055px; width: 445px; height: 142px; }
+    .campo-14 { position: absolute; left: 55px; top: 1197px; width: 417px; height: 135px; }
+    .campo-15 { position: absolute; left: 470px; top: 1197px; width: 445px; height: 135px; }
+    .campo-16 { position: absolute; left: 915px; top: 752px; width: 753px; height: 163px; }
+    .campo-17 { position: absolute; left: 915px; top: 915px; width: 395px; height: 140px; }
+    .campo-18 { position: absolute; left: 1310px; top: 915px; width: 360px; height: 140px; }
+    .campo-19 { position: absolute; left: 915px; top: 1055px; width: 395px; height: 140px; }
+    .campo-20 { position: absolute; left: 1310px; top: 1055px; width: 360px; height: 140px; }
+    .campo-21 { position: absolute; left: 915px; top: 1195px; width: 395px; height: 135px; }
+    .campo-22 { position: absolute; left: 1310px; top: 1195px; width: 360px; height: 135px; }
+    .campo-23 { position: absolute; left: 55px; top: 1330px; width: 313px; height: 154px; }
+    .campo-24 { position: absolute; left: 366px; top: 1330px; width: 550px; height: 154px; }
+    .campo-25 { position: absolute; left: 55px; top: 1482px; width: 313px; height: 136px; }
+    .campo-26 { position: absolute; left: 366px; top: 1482px; width: 550px; height: 136px; }
+    .campo-27 { position: absolute; left: 55px; top: 1618px; width: 313px; height: 136px; }
+    .campo-28 { position: absolute; left: 366px; top: 1618px; width: 275px; height: 136px; }
+    .campo-29 { position: absolute; left: 641px; top: 1618px; width: 275px; height: 136px; }
+    .campo-30 { position: absolute; left: 55px; top: 1754px; width: 313px; height: 119px; }
+    .campo-31 { position: absolute; left: 366px; top: 1754px; width: 275px; height: 119px; }
+    .campo-32 { position: absolute; left: 641px; top: 1754px; width: 275px; height: 119px; }
+    .campo-33 { position: absolute; left: 915px; top: 1330px; width: 753px; height: 154px; }
+    .campo-34 { position: absolute; left: 915px; top: 1482px; width: 753px; height: 136px; }
+    .campo-35 { position: absolute; left: 915px; top: 1618px; width: 753px; height: 136px; }
+    .campo-36 { position: absolute; left: 915px; top: 1754px; width: 753px; height: 250px; }
+    .campo-37 { position: absolute; left: 55px; top: 1873px; width: 861px; height: 131px; }
+    .campo-38 { position: absolute; left: 55px; top: 2004px; width: 1613px; height: 222px; }
+    .campo-39 { position: absolute; left: 55px; top: 2226px; width: 838px; height: 498px; }
+    .campo-40 { position: absolute; left: 891px; top: 2226px; width: 780px; height: 330px; }
+    .campo-41 { position: absolute; left: 891px; top: 2552px; width: 780px; height: 173px; }
+  </style>
+</head>
+<body>
+  <div class="contenedor">
+    <!-- ENCABEZADO FIJO COMO EN LA IMAGEN -->
+    <div class="encabezado">
+      <div class="encabezado-micdta">
+        <span class="encabezado-micdta-text">MIC/DTA</span>
+      </div>
+      <div class="encabezado-titulos">
+        <div class="encabezado-main-title">Manifiesto Internacional de Carga por Carretera / Declaración de Tránsito Aduanero</div>
+        <div class="encabezado-secondary-title">Manifesto Internacional de Carga Rodoviária / Declaração de Trânsito</div>
+      </div>
+    </div>
+    <!-- Resto del layout y campos (SIN TOCAR NADA) -->
+    <div class="micdta"></div>
+    <div class="rectangulo-grande"></div>
+    <div class="campo-1"><div class="titulo-campo">1 Nombre y domicilio del porteador<br><span class="titulo-secundario">Nome e endereço do transportador</span></div></div>
+    <div class="campo-2"><div class="titulo-campo">2 Rol de contribuyente<br><span class="titulo-secundario">Cadastro geral de contribuintes</span></div></div>
+    <div class="campo-3"><div class="titulo-campo">3 Tránsito aduanero<br><span class="titulo-secundario">Trânsito aduaneiro</span></div></div>
+    <div class="campo-4"><div class="titulo-campo">4 Nº</div></div>
+    <div class="campo-5"><div class="titulo-campo">5 Hoja / Folha</div></div>
+    <div class="campo-6"><div class="titulo-campo">6 Fecha de emisión<br><span class="titulo-secundario">Data de emissão</span></div></div>
+    <div class="campo-7"><div class="titulo-campo">7 Aduana, ciudad y país de partida<br><span class="titulo-secundario">Alfândega, cidade e país de partida</span></div></div>
+    <div class="campo-8"><div class="titulo-campo">8 Ciudad y país de destino final<br><span class="titulo-secundario">Cidade e país de destino final</span></div></div>
+    <div class="campo-9"><div class="titulo-campo">9 CAMION ORIGINAL: Nombre y domicilio del propietario<br><span class="titulo-secundario">CAMINHÃO ORIGINAL: Nome e endereço do proprietário</span></div></div>
+    <div class="campo-10"><div class="titulo-campo">10 Rol de contribuyente<br><span class="titulo-secundario">Cadastro geral de</span></div></div>
+    <div class="campo-11"><div class="titulo-campo">11 Placa de camión<br><span class="titulo-secundario">Placa do caminhão</span></div></div>
+    <div class="campo-12"><div class="titulo-campo">12 Marca y número<br><span class="titulo-secundario">Marca e número</span></div></div>
+    <div class="campo-13"><div class="titulo-campo">13 Capacidad de arrastre<br><span class="titulo-secundario">Capacidade de tração (t)</span></div></div>
+    <div class="campo-14"><div class="titulo-campo">14 AÑO<br><span class="titulo-secundario">ANO</span></div></div>
+    <div class="campo-15"><div class="titulo-campo">15 Semirremolque / Remolque<br><span class="titulo-secundario">Semi-reboque / Reboque</span></div></div>
+    <div class="campo-16"><div class="titulo-campo">16 CAMION SUSTITUTO: Nombre y domicilio del<br><span class="titulo-secundario">CAMINHÃO SUBSTITUTO: Nome e endereço do</span></div></div>
+    <div class="campo-17"><div class="titulo-campo">17 Rol de contribuyente<br><span class="titulo-secundario">Cadastro geral de</span></div></div>
+    <div class="campo-18"><div class="titulo-campo">18 Placa del camión<br><span class="titulo-secundario">Placa do</span></div></div>
+    <div class="campo-19"><div class="titulo-campo">19 Marca y número<br><span class="titulo-secundario">Marca e número</span></div></div>
+    <div class="campo-20"><div class="titulo-campo">20 Capacidad de arrastre<br><span class="titulo-secundario">Capacidade de tração</span></div></div>
+    <div class="campo-21"><div class="titulo-campo">21 AÑO<br><span class="titulo-secundario">ANO</span></div></div>
+    <div class="campo-22"><div class="titulo-campo">22 Semirremolque / Remolque<br><span class="titulo-secundario">Semi-reboque / Reboque</span></div></div>
+    <div class="campo-23"><div class="titulo-campo">23 Nº carta de porte<br><span class="titulo-secundario">Nº do conhecimento</span></div></div>
+    <div class="campo-24"><div class="titulo-campo">24 Aduana de destino<br><span class="titulo-secundario">Alfândega de destino</span></div></div>
+    <div class="campo-25"><div class="titulo-campo">25 Moneda<br><span class="titulo-secundario">Moeda</span></div></div>
+    <div class="campo-26"><div class="titulo-campo">26 Origen de las mercaderías<br><span class="titulo-secundario">Origem das mercadorias</span></div></div>
+    <div class="campo-27"><div class="titulo-campo">27 Valor FOT<br><span class="titulo-secundario">Valor FOT</span></div></div>
+    <div class="campo-28"><div class="titulo-campo">28 Flete en U$S<br><span class="titulo-secundario">Flete em U$S</span></div></div>
+    <div class="campo-29"><div class="titulo-campo">29 Seguro en U$S<br><span class="titulo-secundario">Seguro em U$S</span></div></div>
+    <div class="campo-30"><div class="titulo-campo">30 Tipo de Bultos<br><span class="titulo-secundario">Tipo dos volumes</span></div></div>
+    <div class="campo-31"><div class="titulo-campo">31 Cantidad de<br><span class="titulo-secundario">Quantidade de</span></div></div>
+    <div class="campo-32"><div class="titulo-campo">32 Peso bruto<br><span class="titulo-secundario">Peso bruto</span></div></div>
+    <div class="campo-33"><div class="titulo-campo">33 Remitente<br><span class="titulo-secundario">Remetente</span></div></div>
+    <div class="campo-34"><div class="titulo-campo">34 Destinatario<br><span class="titulo-secundario">Destinatario</span></div></div>
+    <div class="campo-35"><div class="titulo-campo">35 Consignatario<br><span class="titulo-secundario">Consignatário</span></div></div>
+    <div class="campo-36"><div class="titulo-campo">36 Documentos anexos<br><span class="titulo-secundario">Documentos anexos</span></div></div>
+    <div class="campo-37"><div class="titulo-campo">37 Número de precintos<br><span class="titulo-secundario">Número dos lacres</span></div></div>
+    <div class="campo-38"><div class="titulo-campo">38 Marcas y números de los bultos, descripción de las mercaderías<br><span class="titulo-secundario">Marcas e números dos volumes, descrição das mercadorias</span></div></div>
+    <div class="campo-39"><div class="titulo-campo">Declaramos que las informaciones presentadas en este Documento son expresión de verdad, que los datos referentes a las mercaderías fueron transcriptos exactamente conforme a la declaración del remitente, las cuales son de su exclusiva responsabilidad, y que esta operación obedece a lo dispuesto en el Convenio sobre Transporte Internacional Terrestre de los países del Cono Sur.<br>
+      <span class="titulo-secundario">
+        Declaramos que as informações prestadas neste Documento são a expressão de verdade que os dados referentes as mercadorias foram transcritos exatamente conforme a declaração do remetente, os quais são de sua exclusiva responsabilidade, e que esta operação obedece ao disposto no Convênio sobre Transporte Internacional Terrestre dos
+      </span>
+      <br>39 Firma y sello del porteador / Assinatura e carimbo do
+    </div></div>
+    <div class="campo-40"><div class="titulo-campo">40 Nº DTA, ruta y plazo de transporte<br><span class="titulo-secundario">Nº DTA, rota e prazo de transporte</span></div></div>
+    <div class="campo-41"><div class="titulo-campo">41 Firma y sello de la Aduana de Partida<br><span class="titulo-secundario">Assinatura e carimbo de Alfândega de</span></div></div>
+  </div>
+</body>
+</html>

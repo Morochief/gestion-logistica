@@ -1,0 +1,21 @@
+# Dev-oriented Dockerfile for pdf-service (HTTP :3002)
+# Use Go toolchain >= 1.24 to satisfy module requirement
+
+FROM golang:1.24-alpine
+
+WORKDIR /src
+
+# Cache modules
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy the rest (compose will bind-mount during dev)
+COPY . .
+
+# If you have a specific font like Arial, you can COPY it in the runtime container.
+# COPY arial.ttf /src/arial.ttf
+
+EXPOSE 3002
+
+# Default dev command; compose may override
+CMD ["go", "run", "./pdf_service.go"]

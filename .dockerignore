@@ -1,0 +1,44 @@
+# Global ignore
+.git
+.gitignore
+.idea
+.vscode
+node_modules
+**/node_modules
+**/.cache
+**/dist
+**/build
+**/.next
+**/.turbo
+**/.parcel-cache
+
+# Python virtualenvs
+venv
+**/venv
+**/.venv
+.venv
+**/__pycache__
+**/*.pyc
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Python byte-compiled
+**/*.pyo
+**/*.pyd
+
+# Logs and temp
+**/logs
+**/*.log
+**/tmp
+**/coverage
+**/.pytest_cache
+
+# Docker artifacts
+**/Dockerfile*
+**/.dockerignore
+
+# Frontend build artifacts
+frontend/build
+frontend/.cache

@@ -1,0 +1,154 @@
+*** a/backend/app/utils/layout_mic.py
+--- b/backend/app/utils/layout_mic.py
+@@
+-from reportlab.pdfgen import canvas
+-from reportlab.platypus import Paragraph, Frame
+-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+-from reportlab.lib.enums import TA_LEFT
++from reportlab.pdfgen import canvas
++from reportlab.platypus import Paragraph, Frame
++from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
++from reportlab.lib.enums import TA_LEFT
++from reportlab.pdfbase import pdfmetrics
++from reportlab.pdfbase.ttfonts import TTFont
++from pathlib import Path
+@@
+-# Fuente por defecto (intentaremos Unicode primero)
+-FONT_REGULAR = "DejaVuSans"
+-FONT_BOLD = "DejaVuSans-Bold"
+-FALLBACK_REGULAR = "Helvetica"
+-FALLBACK_BOLD = "Helvetica-Bold"
++# Fuente por defecto (intentaremos Unicode primero)
++FONT_REGULAR = "DejaVuSans"
++FONT_BOLD = "DejaVuSans-Bold"
++FALLBACK_REGULAR = "Helvetica"
++FALLBACK_BOLD = "Helvetica-Bold"
+@@
+-# Debug global (activar/desactivar prints)
+-DEBUG = True
++# Debug global (activar/desactivar prints)
++DEBUG = True
++
++def _fonts_registered() -> bool:
++    """Verifica si las fuentes actuales están registradas en reportlab."""
++    try:
++        regs = set(pdfmetrics.getRegisteredFontNames())
++        return (FONT_REGULAR in regs) and (FONT_BOLD in regs)
++    except Exception:
++        return False
++
++def register_unicode_fonts():
++    """
++    Registra DejaVuSans (regular y bold) desde rutas RELATIVAS al archivo actual:
++    backend/app/assets/fonts/DejaVuSans.ttf
++    backend/app/assets/fonts/DejaVuSans-Bold.ttf
++    Si no están disponibles, hace fallback a Helvetica.
++    """
++    global FONT_REGULAR, FONT_BOLD
++    if _fonts_registered():
++        return
++    try:
++        base_dir = Path(__file__).resolve().parent                 # .../backend/app/utils
++        fonts_dir = (base_dir / ".." / "assets" / "fonts").resolve()
++        reg_path = fonts_dir / "DejaVuSans.ttf"
++        bold_path = fonts_dir / "DejaVuSans-Bold.ttf"
++
++        if reg_path.exists() and bold_path.exists():
++            pdfmetrics.registerFont(TTFont("DejaVuSans", str(reg_path)))
++            pdfmetrics.registerFont(TTFont("DejaVuSans-Bold", str(bold_path)))
++        else:
++            # Fallback limpio si faltan archivos
++            FONT_REGULAR = FALLBACK_REGULAR
++            FONT_BOLD = FALLBACK_BOLD
++    except Exception:
++        # FallBack por cualquier error en registro
++        FONT_REGULAR = FALLBACK_REGULAR
++        FONT_BOLD = FALLBACK_BOLD
++
++# Registrar al importar el módulo (cinturón)
++register_unicode_fonts()
+@@
+-def generar_micdta_pdf_con_datos(mic_data, filename="mic_{id}.pdf"):
++def generar_micdta_pdf_con_datos(mic_data, filename="mic_{id}.pdf"):
++    # Garantizar registro por si este módulo fue importado antes de tener las fuentes (tirantes)
++    register_unicode_fonts()
+@@
+-    c = canvas.Canvas(filename, pagesize=(width_pt, height_pt))
++    c = canvas.Canvas(filename, pagesize=(width_pt, height_pt))
+     c.setStrokeColorRGB(0, 0, 0)
+     c.setFillColorRGB(0, 0, 0)
++
++    # Si por alguna razón no están registradas, forzar fallback para evitar 500
++    if not _fonts_registered():
++        # Ajustar a Helvetica en caliente
++        # (No cambia las constantes globales, pero asegura que setFont no falle)
++        safe_regular = FALLBACK_REGULAR
++        safe_bold = FALLBACK_BOLD
++    else:
++        safe_regular = FONT_REGULAR
++        safe_bold = FONT_BOLD
+@@
+-    c.saveState()
++    c.saveState()
+     try:
+-        c.setFont(FONT_BOLD, 28)
++        c.setFont(safe_bold, 28)
+         c.drawCentredString(mx + mw / 2, my + mh / 2 - 12, "MIC/DTA")
+-        c.setFont(FONT_BOLD, 20)
++        c.setFont(safe_bold, 20)
+         c.drawString(px2pt(title_x), px2pt(height_px - title_y), "Manifiesto Internacional de Carga por Carretera / Declaración de Tránsito Aduanero")
+-        c.setFont(FONT_REGULAR, 20)
++        c.setFont(safe_regular, 20)
+         c.drawString(px2pt(title_x), px2pt(height_px - title_y - 38), "Manifesto Internacional de Carga Rodoviária / Declaração de Trânsito")
+     finally:
+         c.restoreState()
+@@
+-            fit = fit_text_box(
++            fit = fit_text_box(
+                 c,
+                 valor,
+                 x=x_pt,
+                 y=y_pt + FIELD_TITLE_RESERVED_PT,     # bajar inicio de texto
+                 w=w_pt,
+                 h=h_pt - FIELD_TITLE_RESERVED_PT,      # descontar reserva
+-                font=FONT_REGULAR,
++                font=safe_regular,
+                 min_font=8,
+                 max_font=14,
+                 leading_ratio=1.3,
+                 margin=12
+             )
+@@
+-            draw_multiline_text(c, mic_data[key], x_frame, y_frame, w_frame, h_frame, font_size=10, font=FONT_REGULAR)
++            draw_multiline_text(c, mic_data[key], x_frame, y_frame, w_frame, h_frame, font_size=10, font=safe_regular)
+             continue
+@@
+-            c.saveState()
++            c.saveState()
+             try:
+                 if len(lines) >= 1:
+-                    c.setFont(FONT_REGULAR, 12)
++                    c.setFont(safe_regular, 12)
+                     c.drawString(tx_pt, y_pt + h_pt - TITLE_OFFSET_PT - SUBTITLE_OFFSET_PT - 34, lines[0][:80])
+                 if len(lines) >= 2 and lines[1].strip():
+-                    c.setFont(FONT_REGULAR, 11)
++                    c.setFont(safe_regular, 11)
+                     c.drawString(tx_pt, y_pt + h_pt - TITLE_OFFSET_PT - SUBTITLE_OFFSET_PT - 50, lines[1][:80])
+             finally:
+                 c.restoreState()
+             continue
+@@
+-            c.saveState()
++            c.saveState()
+             try:
+                 size = 14
+                 if n == 12 and len(valor) > 50:
+                     size = 11
+-                c.setFont(FONT_REGULAR, size)
++                c.setFont(safe_regular, size)
+                 c.drawString(tx_pt, y_pt + h_pt - TITLE_OFFSET_PT - SUBTITLE_OFFSET_PT - 34, valor[:200])
+             finally:
+                 c.restoreState()
+@@
+-    log(f"✅ PDF generado exitosamente: {filename}")
++    log(f"✅ PDF generado exitosamente: {filename}")
