@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import axios from "axios";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./MIC.css";
+
 
 // Configuración de la API
 const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:5000";
@@ -58,7 +59,7 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
   const [datosCRT, setDatosCRT] = useState(null);
 
   // ✅ CAMBIAR ESTA FUNCIÓN en MIC.js
-  const cargarDatosCRT = async () => {
+  const cargarDatosCRT = useCallback(async () => {
     if (!crtId && !crtNumero) {
       console.log("⚠️ No se proporcionó crtId ni crtNumero");
       return;
@@ -196,10 +197,10 @@ export default function MIC({ crtId, crtNumero, onClose, modo = "generar" }) {
           ? `CRT ID ${crtId || crtNumero} no encontrado en microservicio Go`
           : `Error de conexión con microservicio Go: ${error.message}`;
       toast.error(`❌ ${errorMsg}`);
-    } finally {
+      } finally {
       setCargandoCRT(false);
     }
-  };
+  }, [crtId, crtNumero, setCargandoCRT, setMic, setDatosCRT, setCamposAutocompletados]); // Cerrar useCallback
 
 
   // ✅ CARGAR DATOS DEL CRT AL MONTAR EL COMPONENTE
