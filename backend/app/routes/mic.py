@@ -826,6 +826,115 @@ def crear_mic():
             "trace": traceback.format_exc()
         }), 500
 
+    # ========== AGREGAR AL FINAL DE backend/app/routes/mic.py ==========
+
+
+@mic_bp.route('/get_crt_data/<int:crt_id>', methods=['GET'])
+def obtener_datos_crt_para_mic(crt_id):
+    """
+    ✅ NUEVA RUTA: Obtiene datos formateados del CRT para auto-completar el formulario MIC
+    """
+    try:
+        print(
+            f"🔍 OBTENIENDO DATOS DEL CRT {crt_id} PARA AUTO-COMPLETAR MIC...")
+
+        # Cargar CRT con todas las relaciones necesarias
+        crt = CRT.query.options(
+            joinedload(CRT.remitente).joinedload(
+                Remitente.ciudad).joinedload(Ciudad.pais),
+            joinedload(CRT.transportadora).joinedload(
+                Transportadora.ciudad).joinedload(Ciudad.pais),
+            joinedload(CRT.destinatario).joinedload(
+                Remitente.ciudad).joinedload(Ciudad.pais),
+            joinedload(CRT.consignatario).joinedload(
+                Remitente.ciudad).joinedload(Ciudad.pais),
+            joinedload(CRT.moneda),
+            joinedload(CRT.gastos).joinedload(CRT_Gasto.moneda_remitente),
+            joinedload(CRT.gastos).joinedload(CRT_Gasto.moneda_destinatario),
+            joinedload(CRT.ciudad_emision).joinedload(Ciudad.pais),
+            joinedload(CRT.pais_emision)
+        ).get_or_404(crt_id)
+
+        print(f"✅ CRT CARGADO: {crt.numero_crt}")
+
+        # Formatear entidades usando las funciones existentes
+        transportadora_formateada = formatear_entidad_completa_crt(
+            crt.transportadora) if crt.transportadora else ""
+        remitente_formateado = formatear_entidad_completa_crt(
+            crt.remitente) if crt.remitente else ""
+        destinatario_formateado = formatear_entidad_completa_crt(
+            crt.destinatario) if crt.destinatario else ""
+        consignatario_formateado = formatear_entidad_completa_crt(
+            crt.consignatario) if crt.consignatario else destinatario_formateado
+
+        # Procesar gastos
+        gastos_procesados = procesar_gastos_crt_para_mic(crt.gastos) if crt.gastos else {
+            "campo_28_total": "", "campo_29_seguro": ""}
+
+        # Construir datos formateados para el frontend
+        datos_mic = {
+            # ✅ INFORMACIÓN BÁSICA DEL CRT
+            "numero_crt": crt.numero_crt or "",
+            "fecha_emision": crt.fecha_emision.strftime('%Y-%m-%d') if crt.fecha_emision else "",
+
+            # ✅ CAMPOS PRINCIPALES AUTO-COMPLETADOS
+            "campo_1_transporte": transportadora_formateada,
+            "campo_6_fecha": crt.fecha_emision.strftime('%Y-%m-%d') if crt.fecha_emision else "",
+            "campo_8_destino": crt.lugar_entrega or "",
+            "campo_9_datos_transporte": transportadora_formateada,  # Mismo que campo 1
+            "campo_23_numero_campo2_crt": crt.numero_crt or "",
+            "campo_25_moneda": crt.moneda.nombre if crt.moneda else "DOLAR AMERICANO",
+            "campo_26_pais": "520-PARAGUAY",
+            "campo_27_valor_campo16": str(crt.declaracion_mercaderia or ""),
+            "campo_32_peso_bruto": str(crt.peso_bruto or ""),
+            "campo_38": crt.detalles_mercaderia or "",
+
+            # ✅ ENTIDADES FORMATEADAS
+            "campo_33_datos_campo1_crt": remitente_formateado,
+            "campo_34_datos_campo4_crt": destinatario_formateado,
+            "campo_35_datos_campo6_crt": consignatario_formateado,
+
+            # ✅ GASTOS PROCESADOS
+            "campo_28_total": gastos_procesados["campo_28_total"],
+            "campo_29_seguro": gastos_procesados["campo_29_seguro"],
+
+            # ✅ DOCUMENTOS
+            "campo_36_factura_despacho": (
+                f"Factura: {crt.factura_exportacion} | Despacho: {crt.nro_despacho}"
+                if crt.factura_exportacion and crt.nro_despacho
+                else (f"Factura: {crt.factura_exportacion}" if crt.factura_exportacion
+                      else f"Despacho: {crt.nro_despacho}" if crt.nro_despacho else "")
+            ),
+
+            # ✅ RESUMEN DE AUTO-COMPLETADO
+            "campos_autocompletados": [
+                "campo_1_transporte", "campo_6_fecha", "campo_8_destino",
+                "campo_9_datos_transporte", "campo_23_numero_campo2_crt",
+                "campo_25_moneda", "campo_26_pais", "campo_27_valor_campo16",
+                "campo_32_peso_bruto", "campo_38", "campo_33_datos_campo1_crt",
+                "campo_34_datos_campo4_crt", "campo_35_datos_campo6_crt",
+                "campo_28_total", "campo_29_seguro", "campo_36_factura_despacho"
+            ]
+        }
+
+        return jsonify({
+            "success": True,
+            "crt_id": crt_id,
+            "numero_crt": crt.numero_crt,
+            "datos": datos_mic,
+            "mensaje": f"Datos del CRT {crt.numero_crt} cargados exitosamente"
+        })
+
+    except Exception as e:
+        import traceback
+        print(f"❌ ERROR OBTENIENDO DATOS CRT {crt_id}:")
+        print(traceback.format_exc())
+        return jsonify({
+            "success": False,
+            "error": str(e),
+            "mensaje": f"Error cargando datos del CRT {crt_id}"
+        }), 500
+
 # Recuerda registrar el blueprint en tu app principal:
 # from app.routes.mic import mic_bp
 # app.register_blueprint(mic_bp)
