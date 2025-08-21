@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { X, Save, FileText, Truck, MapPin, Package, DollarSign, Calendar, Building } from 'lucide-react';
+import { X, Save, FileText, Truck, MapPin, Package, DollarSign, Calendar, Building, Database } from 'lucide-react';
 
 const ModalMICCompleto = ({ 
   isOpen, 
   onClose, 
   crt, 
+  accion = 'generar_pdf', // 'generar_pdf' o 'guardar_bd'
   onGenerate,
   loading = false 
 }) => {
@@ -39,6 +40,7 @@ const ModalMICCompleto = ({
     
     // SECCIÓN 6: Documentos y Referencias
     campo_36_factura_despacho: '',
+    campo_38_datos_campo11_crt: '', // ✅ NUEVO CAMPO 38
     campo_40_tramo: '',
     
     // SECCIÓN 7: Campos de Solo Lectura (pre-llenados)
@@ -49,6 +51,36 @@ const ModalMICCompleto = ({
     campo_25_moneda: '',
   });
 
+  // ========== CONFIGURACIÓN DINÁMICA SEGÚN LA ACCIÓN ==========
+  const configuracionAccion = {
+    generar_pdf: {
+      titulo: 'Generar PDF MIC',
+      descripcion: 'Completar datos para generar PDF',
+      icono: FileText,
+      colorPrimario: 'blue',
+      gradiente: 'from-blue-600 to-purple-600',
+      gradienteHover: 'from-blue-700 to-purple-700',
+      textoBoton: '📄 Generar PDF MIC',
+      textoLoading: 'Generando PDF...',
+      iconoBoton: FileText,
+    },
+    guardar_bd: {
+      titulo: 'Guardar MIC en Base de Datos',
+      descripcion: 'Completar datos para guardar en BD',
+      icono: Database,
+      colorPrimario: 'green',
+      gradiente: 'from-green-600 to-emerald-600',
+      gradienteHover: 'from-green-700 to-emerald-700',
+      textoBoton: '💾 Guardar en Base de Datos',
+      textoLoading: 'Guardando en BD...',
+      iconoBoton: Save,
+    }
+  };
+
+  const config = configuracionAccion[accion] || configuracionAccion.generar_pdf;
+  const IconoPrincipal = config.icono;
+  const IconoBoton = config.iconoBoton;
+
   // Prellenar datos del CRT cuando se abre el modal
   useEffect(() => {
     if (isOpen && crt) {
@@ -56,9 +88,12 @@ const ModalMICCompleto = ({
         ...prev,
         campo_8_destino: crt.lugar_entrega || '',
         campo_25_moneda: crt.moneda || '',
-        campo_27_valor_campo16: crt.declaracion_mercaderia || '',
-        campo_32_peso_bruto: crt.peso_bruto || '',
+        // FORMATEAR CORRECTAMENTE LOS NÚMEROS DEL CRT
+        campo_27_valor_campo16: crt.declaracion_mercaderia ? parseFloat(crt.declaracion_mercaderia).toFixed(2) : '',
+        campo_32_peso_bruto: crt.peso_bruto ? parseFloat(crt.peso_bruto).toFixed(3) : '',
         campo_36_factura_despacho: `${crt.factura_exportacion || ''} ${crt.nro_despacho || ''}`.trim(),
+        // ✅ PRELLENAR CAMPO 38 CON DATOS DEL CRT
+        campo_38_datos_campo11_crt: crt.detalles_mercaderia || crt.observaciones || '',
       }));
     }
   }, [isOpen, crt]);
@@ -87,14 +122,16 @@ const ModalMICCompleto = ({
       campo_15_placa_semi: '',
       campo_24_aduana: '',
       campo_26_pais: '520-PARAGUAY',
-      campo_27_valor_campo16: crt?.declaracion_mercaderia || '',
+      // FORMATEAR CORRECTAMENTE LOS NÚMEROS AL RESETEAR
+      campo_27_valor_campo16: crt?.declaracion_mercaderia ? parseFloat(crt.declaracion_mercaderia).toFixed(2) : '',
       campo_28_total: '',
       campo_29_seguro: '',
       campo_30_tipo_bultos: '',
       campo_31_cantidad: '',
-      campo_32_peso_bruto: crt?.peso_bruto || '',
+      campo_32_peso_bruto: crt?.peso_bruto ? parseFloat(crt.peso_bruto).toFixed(3) : '',
       campo_37_valor_manual: '',
       campo_36_factura_despacho: `${crt?.factura_exportacion || ''} ${crt?.nro_despacho || ''}`.trim(),
+      campo_38_datos_campo11_crt: crt?.detalles_mercaderia || crt?.observaciones || '', // ✅ RESETEAR CAMPO 38
       campo_40_tramo: '',
       campo_4_estado: 'PROVISORIO',
       campo_5_hoja: '1 / 1',
@@ -109,13 +146,15 @@ const ModalMICCompleto = ({
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-xl shadow-2xl w-full max-w-6xl max-h-[95vh] overflow-hidden flex flex-col">
-        {/* HEADER */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 text-white p-6 flex justify-between items-center">
+        {/* HEADER DINÁMICO */}
+        <div className={`bg-gradient-to-r ${config.gradiente} text-white p-6 flex justify-between items-center`}>
           <div className="flex items-center space-x-3">
-            <FileText className="w-8 h-8" />
+            <IconoPrincipal className="w-8 h-8" />
             <div>
-              <h2 className="text-2xl font-bold">Completar Datos MIC</h2>
-              <p className="text-blue-100">CRT: {crt?.numero_crt || 'N/A'}</p>
+              <h2 className="text-2xl font-bold">{config.titulo}</h2>
+              <p className="text-blue-100">
+                CRT: {crt?.numero_crt || 'N/A'} • {config.descripcion}
+              </p>
             </div>
           </div>
           <button
@@ -129,6 +168,29 @@ const ModalMICCompleto = ({
         {/* CONTENT */}
         <div className="flex-1 overflow-y-auto p-6">
           <div className="space-y-8">
+            
+            {/* AVISO DINÁMICO SEGÚN LA ACCIÓN */}
+            <div className={`p-4 rounded-lg border-l-4 ${
+              accion === 'guardar_bd' 
+                ? 'bg-green-50 border-green-400 text-green-800' 
+                : 'bg-blue-50 border-blue-400 text-blue-800'
+            }`}>
+              <div className="flex items-center">
+                <IconoPrincipal className="w-5 h-5 mr-2" />
+                <p className="font-medium">
+                  {accion === 'guardar_bd' 
+                    ? '💾 Los datos se guardarán permanentemente en la base de datos del sistema'
+                    : '📄 Se generará un archivo PDF con los datos completados'
+                  }
+                </p>
+              </div>
+              <p className="text-sm mt-1 ml-7">
+                {accion === 'guardar_bd' 
+                  ? 'Complete todos los campos necesarios antes de guardar el MIC en la base de datos.'
+                  : 'Complete todos los campos necesarios antes de generar el PDF del MIC.'
+                }
+              </p>
+            </div>
             
             {/* SECCIÓN 1: INFORMACIÓN DEL TRANSPORTE */}
             <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-6 border-l-4 border-blue-500">
@@ -491,6 +553,23 @@ const ModalMICCompleto = ({
                 />
                 <small className="text-gray-500">Del CRT factura y despacho</small>
               </div>
+
+              {/* ✅ NUEVO CAMPO 38 */}
+              <div className="mt-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Campo 38 - Datos del Campo 11 CRT *
+                </label>
+                <textarea
+                  rows="4"
+                  value={formData.campo_38_datos_campo11_crt}
+                  onChange={(e) => handleInputChange('campo_38_datos_campo11_crt', e.target.value)}
+                  className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 transition-colors resize-none"
+                  placeholder="Descripción detallada de la mercadería del CRT..."
+                />
+                <small className="text-gray-500">
+                  Información del campo 11 del CRT (detalles de mercadería). Este campo aparecerá en el PDF del MIC.
+                </small>
+              </div>
             </div>
 
             {/* CAMPOS DE SOLO LECTURA */}
@@ -540,7 +619,7 @@ const ModalMICCompleto = ({
           </div>
         </div>
 
-        {/* FOOTER */}
+        {/* FOOTER DINÁMICO */}
         <div className="bg-gray-50 border-t p-6 flex justify-between items-center">
           <div className="flex items-center space-x-4">
             <button
@@ -564,28 +643,38 @@ const ModalMICCompleto = ({
               Cancelar
             </button>
             
+            {/* BOTÓN DINÁMICO SEGÚN LA ACCIÓN */}
             <button
               onClick={handleSubmit}
               disabled={loading || !formData.campo_11_placa}
               className={`px-6 py-3 rounded-lg font-medium flex items-center space-x-2 transition-colors ${
                 loading || !formData.campo_11_placa
-                  ? 'bg-gray-400 cursor-not-allowed'
-                  : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white'
+                  ? 'bg-gray-400 cursor-not-allowed text-white'
+                  : `bg-gradient-to-r ${config.gradiente} hover:${config.gradienteHover} text-white`
               }`}
             >
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                  <span>Generando PDF...</span>
+                  <span>{config.textoLoading}</span>
                 </>
               ) : (
                 <>
-                  <Save className="w-4 h-4" />
-                  <span>Generar PDF MIC</span>
+                  <IconoBoton className="w-4 h-4" />
+                  <span>{config.textoBoton}</span>
                 </>
               )}
             </button>
           </div>
+        </div>
+
+        {/* INDICADOR VISUAL DE LA ACCIÓN ACTUAL */}
+        <div className={`absolute top-0 right-0 mt-4 mr-4 px-3 py-1 rounded-full text-xs font-medium ${
+          accion === 'guardar_bd' 
+            ? 'bg-green-100 text-green-800 border border-green-200' 
+            : 'bg-blue-100 text-blue-800 border border-blue-200'
+        }`}>
+          {accion === 'guardar_bd' ? '💾 Modo: Guardar BD' : '📄 Modo: Generar PDF'}
         </div>
       </div>
     </div>

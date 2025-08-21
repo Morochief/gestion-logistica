@@ -45,29 +45,70 @@ function ListarCRT() {
 
   const itemsPerPage = 10;
 
-  // ========== FUNCIONES AUXILIARES PARA FORMATEO NUMÉRICO ==========
+  // ========== FUNCIONES AUXILIARES PARA FORMATEO NUMÉRICO MEJORADO ==========
 
   // Función para formatear entrada de números con comas decimales
   const formatearEntradaNumerica = (valor) => {
     if (!valor) return "";
-    // Reemplazar punto por coma para mostrar al usuario
+    // Convertir a string y reemplazar punto por coma para mostrar al usuario
     return valor.toString().replace(".", ",");
   };
 
-  // Función para parsear entrada del usuario a número válido
+  // Función para parsear entrada del usuario a número válido (MEJORADA)
   const parsearEntradaNumerica = (valor) => {
     if (!valor) return "";
+    
+    // Convertir a string para procesar
+    let valorStr = valor.toString().trim();
+    
+    // Si ya está en formato correcto, devolverlo
+    if (!valorStr || valorStr === "0") return "";
+    
     // Reemplazar coma por punto para procesamiento
-    const valorLimpio = valor.toString().replace(",", ".");
-    const numero = parseFloat(valorLimpio);
-    return isNaN(numero) ? "" : numero;
+    valorStr = valorStr.replace(",", ".");
+    
+    // Validar que sea un número válido
+    const numero = parseFloat(valorStr);
+    
+    // Si no es un número válido, retornar vacío
+    if (isNaN(numero)) return "";
+    
+    // Retornar el número con máximo 3 decimales para pesos y 2 para valores
+    return numero;
   };
 
+  // NUEVA: Función para formatear números para envío al backend
+  const formatearNumeroParaBackend = (valor, tipoFormato = 'decimal') => {
+    if (!valor) return null;
+    
+    const numero = parsearEntradaNumerica(valor);
+    if (!numero && numero !== 0) return null;
+    
+    switch (tipoFormato) {
+      case 'peso': // Pesos: 3 decimales como número
+        return Number(numero.toFixed(3));
+      
+      case 'decimal': // Valores monetarios: 2 decimales como número
+        return Number(numero.toFixed(2));
+      
+      case 'entero': // Enteros como número
+        return Number(Math.round(numero));
+      
+      case 'string': // Como string (para campos que el backend espera string)
+        return numero.toString();
+      
+      case 'anio': // Años como string (formato específico)
+        return Math.round(numero).toString();
+      
+      default:
+        return Number(numero.toFixed(2));
+    }
+  };
 
   // Función para entrada completamente natural de comas
   const manejarEntradaNaturalComa = (e, callback) => {
     let valor = e.target.value;
-    
+
     // Permitir solo números, una coma, y signo negativo al inicio
     // Regex más permisivo que permite escribir comas en cualquier momento
     const caracteresPermitidos = /^-?[\d,]*$/;
@@ -84,10 +125,10 @@ function ListarCRT() {
     }
 
     // Si hay coma, limitar decimales a 2
-    if (valor.includes(',')) {
-      const partes = valor.split(',');
+    if (valor.includes(",")) {
+      const partes = valor.split(",");
       if (partes[1] && partes[1].length > 2) {
-        valor = partes[0] + ',' + partes[1].substring(0, 2);
+        valor = partes[0] + "," + partes[1].substring(0, 2);
       }
     }
 
@@ -96,17 +137,18 @@ function ListarCRT() {
   };
 
   // ========== NUEVA FUNCIÓN PARA AUTOCOMPLETAR VALOR FLETE EXTERNO ==========
-const autocompletarValorFleteExterno = (campo15Items) => {
-  if (campo15Items.length === 0) return '';
-  
-  const primerItem = campo15Items[0];
-  if (!primerItem) return '';
-  
-  // Priorizar valor del remitente, si no existe usar valor del destinatario
-  const valor = primerItem.valor_remitente || primerItem.valor_destinatario || '';
-  
-  return parsearEntradaNumerica(valor);
-};
+  const autocompletarValorFleteExterno = (campo15Items) => {
+    if (campo15Items.length === 0) return "";
+
+    const primerItem = campo15Items[0];
+    if (!primerItem) return "";
+
+    // Priorizar valor del remitente, si no existe usar valor del destinatario
+    const valor =
+      primerItem.valor_remitente || primerItem.valor_destinatario || "";
+
+    return parsearEntradaNumerica(valor);
+  };
 
   // ========== FUNCIONES EXISTENTES (MANTENIDAS) ==========
   useEffect(() => {
@@ -123,7 +165,9 @@ const autocompletarValorFleteExterno = (campo15Items) => {
     if (campo15Items.length > 0 && modalEditar) {
       const primerValor = autocompletarValorFleteExterno(campo15Items);
       if (primerValor) {
-        const campoFleteExterno = document.querySelector('input[name="valor_flete_externo"]');
+        const campoFleteExterno = document.querySelector(
+          'input[name="valor_flete_externo"]'
+        );
         if (campoFleteExterno && !campoFleteExterno.value) {
           campoFleteExterno.value = formatearEntradaNumerica(primerValor);
         }
@@ -285,22 +329,6 @@ const autocompletarValorFleteExterno = (campo15Items) => {
     }
   };
 
-  // FUNCIÓN emitirMIC CORREGIDA - SOLO ABRE MODAL
-  const emitirMIC = async (crt) => {
-    if (!crt.numero_crt) {
-      toast.warn("Primero debes emitir el CRT antes de generar el MIC.");
-      return;
-    }
-
-    console.log(`🚀 Abriendo modal MIC para CRT ${crt.id} - ${crt.numero_crt}`);
-
-    // ABRIR MODAL PARA COMPLETAR DATOS
-    setModalMIC({
-      isOpen: true,
-      crt: crt,
-    });
-  };
-
   // NUEVA FUNCIÓN PARA GENERAR PDF CON DATOS COMPLETOS
   const generarPDFMIC = async (datosModal) => {
     const crt = modalMIC.crt;
@@ -333,7 +361,7 @@ const autocompletarValorFleteExterno = (campo15Items) => {
       }, 1000);
 
       toast.success(`✅ PDF MIC completo generado para CRT ${crt.numero_crt}`);
-      setModalMIC({ isOpen: false, crt: null });
+      setModalMIC({ isOpen: false, crt: null, accion: null });
     } catch (error) {
       console.error("❌ Error generando MIC:", error);
       toast.error(
@@ -344,9 +372,225 @@ const autocompletarValorFleteExterno = (campo15Items) => {
     }
   };
 
+  // ========== NUEVA FUNCIÓN PARA GUARDAR MIC COMPLETO EN BD ==========
+  const guardarMICCompletoEnBD = async (datosModal) => {
+    const crt = modalMIC.crt;
+    if (!crt) return;
+
+    console.log(
+      `🎯 Guardando MIC completo en BD con datos completados para CRT ${crt.numero_crt}`
+    );
+    setLoadingMIC(crt.id);
+
+    try {
+      // PROCESAR Y FORMATEAR DATOS NUMÉRICOS CORRECTAMENTE
+      const datosFormateados = { ...datosModal };
+      
+      // Lista de campos numéricos que necesitan formateo especial
+      const camposNumericos = {
+        // Pesos (3 decimales como número)
+        'campo_32_peso_bruto': 'peso',
+        
+        // Valores monetarios (2 decimales como número)
+        'campo_27_valor_campo16': 'decimal',
+        'campo_28_total': 'decimal', 
+        'campo_29_seguro': 'decimal',
+        'campo_37_valor_manual': 'decimal',
+        
+        // Campos que el backend espera como STRING
+        'campo_14_anio': 'anio',           // Año como string
+        'campo_31_cantidad': 'string',     // Cantidad como string
+        'campo_10_numero': 'string',       // Número interno como string
+      };
+
+      // Formatear cada campo numérico
+      Object.keys(camposNumericos).forEach(campo => {
+        if (datosFormateados[campo]) {
+          const tipoFormato = camposNumericos[campo];
+          datosFormateados[campo] = formatearNumeroParaBackend(datosFormateados[campo], tipoFormato);
+        }
+      });
+
+      // ASEGURAR QUE LOS CAMPOS DE TEXTO PERMANEZCAN COMO STRINGS
+      const camposTexto = [
+        'campo_2_numero',
+        'campo_3_transporte', 
+        'campo_7_pto_seguro',
+        'campo_8_destino',
+        'campo_11_placa',
+        'campo_12_modelo_chasis',
+        'campo_15_placa_semi',
+        'campo_24_aduana',
+        'campo_26_pais',
+        'campo_30_tipo_bultos',
+        'campo_36_factura_despacho',
+        'campo_38_datos_campo11_crt', // ✅ NUEVO CAMPO 38
+        'campo_40_tramo',
+        'campo_4_estado',
+        'campo_5_hoja',
+        'campo_6_fecha',
+        'campo_13_siempre_45',
+        'campo_25_moneda'
+      ];
+
+      camposTexto.forEach(campo => {
+        if (datosFormateados[campo] !== undefined && datosFormateados[campo] !== null) {
+          datosFormateados[campo] = datosFormateados[campo].toString();
+        }
+      });
+
+      console.log("📊 Datos formateados para backend:", {
+        original_peso: datosModal.campo_32_peso_bruto,
+        formateado_peso: datosFormateados.campo_32_peso_bruto,
+        original_anio: datosModal.campo_14_anio,
+        formateado_anio: datosFormateados.campo_14_anio,
+        tipo_anio: typeof datosFormateados.campo_14_anio,
+        campos_numericos: Object.keys(camposNumericos).filter(k => datosFormateados[k])
+      });
+
+      // USAR EL MISMO ENDPOINT QUE FUNCIONA, pero con los datos del modal
+      const response = await axios.post(
+        `http://localhost:5000/api/mic-guardados/crear-desde-crt/${crt.id}`,
+        {
+          // Incluir datos básicos
+          campo_4_estado: "PROVISORIO",
+          
+          // INCLUIR TODOS LOS DATOS COMPLETOS DEL MODAL (YA FORMATEADOS)
+          ...datosFormateados,
+          
+          // Datos adicionales de origen
+          origen: "MODAL_COMPLETO", // Para identificar que viene del modal
+          datos_completos: true,    // Flag para indicar que tiene datos completos
+        },
+        {
+          timeout: 30000,
+          headers: {
+            "Content-Type": "application/json",
+          },
+        }
+      );
+
+      toast.success(
+        `✅ MIC completo creado y guardado exitosamente!\n` +
+          `🆔 ID: ${response.data.id}\n` +
+          `📋 CRT: ${response.data.numero_crt || crt.numero_crt}\n` +
+          `📊 Con todos los datos completados del modal`
+      );
+
+      setModalMIC({ isOpen: false, crt: null, accion: null });
+
+      // Preguntar si desea ver todos los MICs guardados
+      if (window.confirm("¿Desea ver todos los MICs guardados?")) {
+        navigate("/mic"); // Redirigir a MICsGuardados
+      }
+    } catch (error) {
+      console.error("❌ Error guardando MIC completo:", error);
+      toast.error(
+        `❌ Error al guardar MIC: ${error.response?.data?.error || error.message || "Error desconocido"}`
+      );
+    } finally {
+      setLoadingMIC(null);
+    }
+  };
+
+  // ========== FUNCIÓN UNIFICADA PARA MANEJAR ACCIONES DESDE EL MODAL ==========
+  const manejarAccionModalMIC = async (datosModal) => {
+    const accion = modalMIC.accion;
+    
+    console.log(`🔄 Ejecutando acción: ${accion}`);
+
+    switch (accion) {
+      case 'generar_pdf':
+        await generarPDFMIC(datosModal);
+        break;
+      case 'guardar_bd':
+        await guardarMICCompletoEnBD(datosModal);
+        break;
+      default:
+        console.warn(`⚠️ Acción no reconocida: ${accion}`);
+        toast.warn(`Acción no reconocida: ${accion}`);
+        break;
+    }
+  };
+
   // FUNCIÓN PARA CERRAR MODAL
   const cerrarModalMIC = () => {
-    setModalMIC({ isOpen: false, crt: null });
+    setModalMIC({ isOpen: false, crt: null, accion: null });
+  };
+
+  // FUNCIÓN emitirMIC RENOVADA - USA LA FUNCIÓN UNIFICADA
+  const emitirMIC = async (crt) => {
+    await abrirModalMIC(crt, 'generar_pdf');
+  };
+
+  // NUEVA FUNCIÓN PARA GUARDAR MIC COMPLETO - USA LA FUNCIÓN UNIFICADA
+  const guardarMICEnBD = async (crt) => {
+    await abrirModalMIC(crt, 'guardar_bd');
+  };
+
+  // ========== FUNCIÓN UNIFICADA PARA ABRIR MODAL MIC ==========
+  const abrirModalMIC = async (crt, accion = 'generar_pdf') => {
+    if (!crt.numero_crt) {
+      toast.warn("Primero debes emitir el CRT antes de generar el MIC.");
+      return;
+    }
+
+    console.log(`🚀 Abriendo modal MIC para CRT ${crt.id} - ${crt.numero_crt} (Acción: ${accion})`);
+
+    // ABRIR MODAL PARA COMPLETAR DATOS CON LA ACCIÓN ESPECIFICADA
+    setModalMIC({
+      isOpen: true,
+      crt: crt,
+      accion: accion, // 'generar_pdf' o 'guardar_bd'
+    });
+  };
+
+  // FUNCIÓN PARA GUARDAR MIC BÁSICO EN BD (sin modal - para casos urgentes)
+  const guardarMICBasicoEnBD = async (crt) => {
+    if (!crt.numero_crt) {
+      toast.warn("El CRT debe estar emitido antes de guardar el MIC.");
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `¿Crear y guardar MIC BÁSICO (sin datos completos) en base de datos para CRT ${crt.numero_crt}?`
+      )
+    ) {
+      return;
+    }
+
+    try {
+      console.log(
+        `🚀 Guardando MIC básico en BD para CRT ${crt.id} - ${crt.numero_crt}`
+      );
+
+      const response = await axios.post(
+        `http://localhost:5000/api/mic-guardados/crear-desde-crt/${crt.id}`,
+        {
+          // Datos adicionales opcionales que quieras enviar
+          campo_4_estado: "PROVISORIO",
+          // Puedes agregar más campos si necesitas valores específicos
+          // campo_38_datos_campo11_crt: "Detalles adicionales...",
+        }
+      );
+
+      toast.success(
+        `✅ MIC básico creado y guardado exitosamente!\n` +
+          `🆔 ID: ${response.data.id}\n` +
+          `📋 CRT: ${response.data.numero_crt || crt.numero_crt}`
+      );
+
+      // Opcional: redirigir a la vista de MICs guardados
+      if (window.confirm("¿Desea ver todos los MICs guardados?")) {
+        navigate("/mic"); // Redirigir a MICsGuardados
+      }
+    } catch (err) {
+      console.error("❌ Error guardando MIC:", err);
+      toast.error(
+        `❌ Error guardando MIC: ${err.response?.data?.error || err.message}`
+      );
+    }
   };
 
   // ========== NUEVAS FUNCIONES PARA MEJORAS ==========
@@ -431,9 +675,9 @@ const autocompletarValorFleteExterno = (campo15Items) => {
         moneda_destinatario: "USD",
       },
     ];
-    
+
     setCampo15Items(nuevosItems);
-    
+
     // Si es el primer item, mostrar ayuda
     if (nuevosItems.length === 1) {
       toast.info("💡 El primer tramo se autocopiará a 'Valor Flete Externo'", {
@@ -448,28 +692,30 @@ const autocompletarValorFleteExterno = (campo15Items) => {
 
   const actualizarCampo15Item = (index, campo, valor) => {
     const nuevosItems = [...campo15Items];
-    
+
     // Si es un campo numérico, procesar correctamente
-    if (campo === 'valor_remitente' || campo === 'valor_destinatario') {
+    if (campo === "valor_remitente" || campo === "valor_destinatario") {
       const valorProcesado = parsearEntradaNumerica(valor);
       nuevosItems[index] = { ...nuevosItems[index], [campo]: valorProcesado };
-      
+
       // AUTOCOMPLETAR VALOR FLETE EXTERNO si es el primer item (índice 0)
       if (index === 0 && valorProcesado) {
         // Buscar el campo valor_flete_externo en el formulario y actualizarlo
-        const campoFleteExterno = document.querySelector('input[name="valor_flete_externo"]');
+        const campoFleteExterno = document.querySelector(
+          'input[name="valor_flete_externo"]'
+        );
         if (campoFleteExterno) {
           campoFleteExterno.value = formatearEntradaNumerica(valorProcesado);
-          
+
           // Disparar evento para notificar el cambio
-          const evento = new Event('input', { bubbles: true });
+          const evento = new Event("input", { bubbles: true });
           campoFleteExterno.dispatchEvent(evento);
         }
       }
     } else {
       nuevosItems[index] = { ...nuevosItems[index], [campo]: valor };
     }
-    
+
     setCampo15Items(nuevosItems);
   };
 
@@ -827,18 +1073,43 @@ const autocompletarValorFleteExterno = (campo15Items) => {
                     </button>
 
                     {crt.estado === "EMITIDO" && (
-                      <button
-                        onClick={() => emitirMIC(crt)}
-                        disabled={loadingMIC === crt.id}
-                        className={`text-white px-2 rounded text-xs ${
-                          loadingMIC === crt.id
-                            ? "bg-gray-400 cursor-not-allowed"
-                            : "bg-purple-600 hover:bg-purple-700"
-                        }`}
-                        title="Completar y generar PDF MIC"
-                      >
-                        {loadingMIC === crt.id ? "..." : "📋"}
-                      </button>
+                      <>
+                        <button
+                          onClick={() => emitirMIC(crt)}
+                          disabled={loadingMIC === crt.id}
+                          className={`text-white px-2 rounded text-xs ${
+                            loadingMIC === crt.id
+                              ? "bg-gray-400 cursor-not-allowed"
+                              : "bg-purple-600 hover:bg-purple-700"
+                          }`}
+                          title="Completar datos y generar PDF MIC"
+                        >
+                          {loadingMIC === crt.id ? "..." : "📋"}
+                        </button>
+
+                        {/* ✅ BOTÓN UNIFICADO PARA GUARDAR MIC COMPLETO EN BD */}
+                        <button
+                          onClick={() => guardarMICEnBD(crt)}
+                          disabled={loadingMIC === crt.id}
+                          className={`text-white px-2 rounded text-xs transition ${
+                            loadingMIC === crt.id
+                              ? "bg-gray-400 cursor-not-allowed"
+                              : "bg-green-600 hover:bg-green-700"
+                          }`}
+                          title="Completar datos y guardar MIC en base de datos"
+                        >
+                          {loadingMIC === crt.id ? "..." : "💾"}
+                        </button>
+
+                        {/* 🔧 BOTÓN OPCIONAL PARA GUARDAR MIC BÁSICO (sin modal) */}
+                        <button
+                          onClick={() => guardarMICBasicoEnBD(crt)}
+                          className="bg-gray-500 hover:bg-gray-600 text-white px-2 rounded text-xs transition"
+                          title="Guardar MIC básico sin completar datos (solo para casos urgentes)"
+                        >
+                          ⚡
+                        </button>
+                      </>
                     )}
 
                     <button
@@ -912,12 +1183,13 @@ const autocompletarValorFleteExterno = (campo15Items) => {
             <MIC crtId={micCrtId} onClose={() => setMicCrtId(null)} />
           </Modal>
 
-          {/* NUEVO MODAL MIC COMPLETO */}
+          {/* MODAL MIC UNIFICADO - AHORA MANEJA AMBAS ACCIONES */}
           <ModalMICCompleto
             isOpen={modalMIC.isOpen}
             onClose={cerrarModalMIC}
             crt={modalMIC.crt}
-            onGenerate={generarPDFMIC}
+            accion={modalMIC.accion} // 'generar_pdf' o 'guardar_bd'
+            onGenerate={manejarAccionModalMIC} // Función unificada que maneja ambas acciones
             loading={loadingMIC === modalMIC.crt?.id}
           />
 
@@ -1414,7 +1686,8 @@ const autocompletarValorFleteExterno = (campo15Items) => {
                           placeholder="0,00"
                         />
                         <small className="text-gray-500">
-                          ⚡ Se autocompleta automáticamente con el primer valor del Campo 15
+                          ⚡ Se autocompleta automáticamente con el primer valor
+                          del Campo 15
                         </small>
                       </div>
 
@@ -1510,7 +1783,10 @@ const autocompletarValorFleteExterno = (campo15Items) => {
                           </thead>
                           <tbody>
                             {campo15Items.map((item, index) => (
-                              <tr key={index} className={index === 0 ? "bg-yellow-50" : ""}>
+                              <tr
+                                key={index}
+                                className={index === 0 ? "bg-yellow-50" : ""}
+                              >
                                 <td className="border px-2 py-1">
                                   <textarea
                                     value={item.descripcion_gasto}
@@ -1531,7 +1807,8 @@ const autocompletarValorFleteExterno = (campo15Items) => {
                                   />
                                   {index === 0 && (
                                     <small className="text-orange-600 font-medium">
-                                      ⚡ Primer tramo - Se autocompleta "Valor Flete Externo"
+                                      ⚡ Primer tramo - Se autocompleta "Valor
+                                      Flete Externo"
                                     </small>
                                   )}
                                 </td>
@@ -1564,7 +1841,11 @@ const autocompletarValorFleteExterno = (campo15Items) => {
                                     )}
                                     onChange={(e) => {
                                       manejarEntradaNaturalComa(e, (valor) => {
-                                        actualizarCampo15Item(index, "valor_remitente", valor);
+                                        actualizarCampo15Item(
+                                          index,
+                                          "valor_remitente",
+                                          valor
+                                        );
                                       });
                                     }}
                                     className="w-full p-2 border rounded text-sm text-right"
@@ -1605,7 +1886,11 @@ const autocompletarValorFleteExterno = (campo15Items) => {
                                     )}
                                     onChange={(e) => {
                                       manejarEntradaNaturalComa(e, (valor) => {
-                                        actualizarCampo15Item(index, "valor_destinatario", valor);
+                                        actualizarCampo15Item(
+                                          index,
+                                          "valor_destinatario",
+                                          valor
+                                        );
                                       });
                                     }}
                                     className="w-full p-2 border rounded text-sm text-right"

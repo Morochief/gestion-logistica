@@ -222,12 +222,11 @@ def get_field_config(campo_numero):
     # ---- ENTIDADES (mejor lectura) 33,34,35 ----
     if campo_numero in [33, 34, 35]:
         return {
-            'min_font': 6,        # antes 4 → sube tamaño base
-            'max_font': 12,       # un poco más de techo
-            'leading_ratio': 1.12,
-            'margin': 5,
-            # antes 56 → sube el texto (más alto disponible)
-            'title_reserved_h': 46,
+            'min_font': 9,          # mantenemos legibilidad alta
+            'max_font': 14,
+            'leading_ratio': 1.18,  # un poco menos de interlineado para que entren más líneas
+            'margin': 4,            # margen más chico => más ancho útil
+            'title_reserved_h': 34,  # menos reserva arriba => el cuerpo empieza más arriba
             'allow_multiline': True
         }
 
@@ -258,7 +257,7 @@ def get_field_config(campo_numero):
             'max_font': 16,
             'leading_ratio': 1.2,
             'margin': 6,
-            'title_reserved_h': 24,   # clave: antes ~56 → ahora 24 para que aparezcan
+            'title_reserved_h': 28,   # clave: antes ~56 → ahora 24 para que aparezcan
             'allow_multiline': False  # 1 línea; recorta con "..."
         }
 
@@ -441,7 +440,8 @@ def obtener_valor_campo(mic_data, key, campo_numero):
 
 def formatear_campo_entidad(mic_data, campo_key):
     """
-    Formatea campos de entidades (33, 34, 35) incluyendo tipo y número de doc.
+    Formatea campos de entidades (33, 34, 35) asegurando que siempre
+    se muestre tipo y número de documento, incluso si viene embebido en el nombre.
     """
     valor = mic_data.get(campo_key, "")
     if not valor:
@@ -451,29 +451,49 @@ def formatear_campo_entidad(mic_data, campo_key):
         return valor
 
     if isinstance(valor, dict):
-        partes = []
-        if valor.get('nombre'):
-            partes.append(valor['nombre'])
-        if valor.get('direccion'):
-            partes.append(valor['direccion'])
+        nombre = (valor.get('nombre') or "").strip()
+        direccion = (valor.get('direccion') or "").strip()
+        ciudad = (valor.get('ciudad') or "").strip()
+        pais = (valor.get('pais') or "").strip()
 
-        ciudad = valor.get('ciudad', '')
-        pais = valor.get('pais', '')
-        if ciudad and pais:
-            partes.append(f"{ciudad} - {pais}")
-        elif ciudad:
-            partes.append(ciudad)
-        elif pais:
-            partes.append(pais)
+        tipo_doc = (valor.get('tipo_documento') or "").strip()
+        numero_doc = (valor.get('numero_documento') or "").strip()
 
-        tipo_doc = valor.get('tipo_documento', '')
-        numero_doc = valor.get('numero_documento', '')
+        # fallback: si no vienen separados, buscar "RUC"/"CNPJ"/"Doc" en el nombre o direccion
+        if not numero_doc:
+            for campo in [nombre, direccion]:
+                if campo and ("RUC" in campo or "CNPJ" in campo or "Doc" in campo):
+                    numero_doc = campo
+                    tipo_doc = ""  # ya viene embebido
+                    break
+
+        doc_str = ""
         if tipo_doc and numero_doc:
-            partes.append(f"{tipo_doc}: {numero_doc}")
+            doc_str = f"{tipo_doc}: {numero_doc}"
         elif numero_doc:
-            partes.append(f"Doc: {numero_doc}")
+            doc_str = numero_doc
 
-        return '\n'.join(filter(None, partes))
+        lineas = []
+
+        # Primera línea: nombre + doc
+        if nombre and doc_str:
+            lineas.append(f"{nombre} — {doc_str}")
+        elif nombre:
+            lineas.append(nombre)
+        elif doc_str:
+            lineas.append(doc_str)
+
+        if direccion:
+            lineas.append(direccion)
+
+        if ciudad and pais:
+            lineas.append(f"{ciudad} - {pais}")
+        elif ciudad:
+            lineas.append(ciudad)
+        elif pais:
+            lineas.append(pais)
+
+        return "\n".join(lineas)
 
     return str(valor)
 
@@ -553,6 +573,78 @@ def draw_campo40_robust(c, x_pt, y_pt, w_pt, h_pt, valor):
 
     # Usar la función universal para el campo 40
     fit_text_box_universal(c, valor, x_pt, y_pt, w_pt, h_pt, 40, FONT_REGULAR)
+
+
+DOC_PATTERNS = [
+    r'(CNPJ\s*:\s*[\d./-]+)',
+    r'(RUC\s*:\s*[\d.-]+)',
+    r'(Doc(?:umento)?\s*:\s*[\w\d./-]+)'
+]
+
+
+def _buscar_doc_en_texto(texto: str):
+    if not texto:
+        return None
+    for pat in DOC_PATTERNS:
+        m = re.search(pat, texto, flags=re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
+
+
+def validar_entidades_33_34_35(mic_data: dict, autofix=False):
+    """
+    Valida que 33/34/35 tengan tipo_documento y numero_documento.
+    Si autofix=True, intenta extraer un doc embebido (CNPJ/RUC/Doc) de "nombre"/"direccion"
+    y lo coloca en numero_documento (tipo_documento queda vacío si no se pudo separar).
+    """
+    claves = {
+        33: 'campo_33_datos_campo1_crt',
+        34: 'campo_34_datos_campo4_crt',
+        35: 'campo_35_datos_campo6_crt',
+    }
+
+    problemas = []
+    for n, key in claves.items():
+        val = mic_data.get(key)
+        if not isinstance(val, dict):
+            print(
+                f"⚠️ Campo {n}: no es dict o está vacío ({type(val).__name__}).")
+            problemas.append(n)
+            continue
+
+        tipo = (val.get('tipo_documento') or "").strip()
+        numero = (val.get('numero_documento') or "").strip()
+
+        if not numero:
+            # intentar extraer del nombre o dirección
+            doc_embebido = _buscar_doc_en_texto(
+                (val.get('nombre') or "") + " " + (val.get('direccion') or ""))
+            if doc_embebido and autofix:
+                # si viene como "CNPJ: 12.345..." lo ponemos entero en numero_documento
+                val['numero_documento'] = doc_embebido
+                # no forzamos tipo si no podemos separarlo
+                val.setdefault('tipo_documento', '')
+                numero = doc_embebido
+
+        if not numero or not tipo:  # aún falta algo
+            faltantes = []
+            if not tipo:
+                faltantes.append("tipo_documento")
+            if not numero:
+                faltantes.append("numero_documento")
+            print(f"❌ Campo {n}: faltan {', '.join(faltantes)} en {key}.")
+            problemas.append(n)
+        else:
+            print(f"✅ Campo {n}: {tipo}: {numero}")
+
+    if not problemas:
+        print("🎉 33/34/35 OK: todos con tipo y número de documento.")
+    else:
+        print(f"🔎 Revisa campos: {problemas} (ver mensajes arriba).")
+
+    return problemas
+
 
 # =============================
 #   GENERADOR PRINCIPAL PDF

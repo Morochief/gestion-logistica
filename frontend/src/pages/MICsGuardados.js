@@ -1,10 +1,10 @@
+// frontend/src/pages/MICsGuardados.js
 import React, { useState, useEffect, useCallback } from "react";
-import axios from "axios";
+import api from "../api/api"; // 👈 usa tu cliente centralizado
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./MICsGuardados.css";
 
-// Componente principal
 export default function MICsGuardados() {
   const [mics, setMics] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -18,152 +18,169 @@ export default function MICsGuardados() {
   const [showStats, setShowStats] = useState(false);
   const [stats, setStats] = useState(null);
 
-  // Estados para filtros
+  // Filtros
   const [filters, setFilters] = useState({
-    estado: '',
-    numero_carta: '',
-    fecha_desde: '',
-    fecha_hasta: '',
-    transportadora: '',
-    placa: '',
-    destino: ''
+    estado: "",
+    numero_carta: "",
+    fecha_desde: "",
+    fecha_hasta: "",
+    transportadora: "",
+    placa: "",
+    destino: "",
   });
 
-  // Cargar MICs
-  const cargarMics = useCallback(async (page = 1, filtros = {}) => {
-    setLoading(true);
+  // ========= Helpers =========
+  const formatearFecha = (fecha) => {
+    if (!fecha) return "N/A";
     try {
-      console.log('🔍 Cargando MICs guardados...', { page, filtros });
-      
-      const params = {
-        page,
-        per_page: perPage,
-        ...filtros
-      };
-
-      const response = await axios.get('http://localhost:5000/api/mic-guardados/', { params });
-      
-      setMics(response.data.mics);
-      setCurrentPage(response.data.pagination.page);
-      setTotalPages(response.data.pagination.pages);
-      setTotalItems(response.data.pagination.total);
-
-      console.log(`✅ ${response.data.mics.length} MICs cargados de ${response.data.pagination.total} totales`);
-      
-      if (response.data.mics.length === 0 && Object.values(filtros).some(v => v)) {
-        toast.info("🔍 No se encontraron MICs con los filtros aplicados");
-      }
-    } catch (error) {
-      console.error('❌ Error cargando MICs:', error);
-      toast.error(`❌ Error cargando MICs: ${error.response?.data?.error || error.message}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [perPage]);
-
-  // Cargar estadísticas
-  const cargarEstadisticas = async () => {
-    try {
-      console.log('📊 Cargando estadísticas...');
-      const response = await axios.get('http://localhost:5000/api/mic-guardados/stats');
-      setStats(response.data);
-      console.log('✅ Estadísticas cargadas:', response.data);
-    } catch (error) {
-      console.error('❌ Error cargando estadísticas:', error);
-      toast.error('❌ Error cargando estadísticas');
+      const d = new Date(fecha); // admite 'YYYY-MM-DD' o 'YYYY-MM-DD HH:mm:ss'
+      if (isNaN(d.getTime())) return fecha;
+      return d.toLocaleDateString("es-PY");
+    } catch {
+      return fecha;
     }
   };
 
-  // Efectos
+  const formatearEstado = (estado) => {
+    const colores = {
+      PROVISORIO: "bg-yellow-100 text-yellow-800",
+      DEFINITIVO: "bg-green-100 text-green-800",
+      ANULADO: "bg-red-100 text-red-800",
+      EN_PROCESO: "bg-blue-100 text-blue-800",
+    };
+    return (
+      <span
+        className={`px-2 py-1 rounded-full text-xs font-medium ${
+          colores[estado] || "bg-gray-100 text-gray-800"
+        }`}
+      >
+        {estado || "N/A"}
+      </span>
+    );
+  };
+
+  // ========= Cargar lista =========
+  const cargarMics = useCallback(
+    async (page = 1, filtros = {}) => {
+      setLoading(true);
+      try {
+        const params = { page, per_page: perPage, ...filtros };
+        // ✅ CORREGIDO: Quité el /api inicial para evitar duplicación
+        const { data } = await api.get("mic-guardados/", { params });
+
+        setMics(data.mics || []);
+        setCurrentPage(data.pagination?.page || 1);
+        setTotalPages(data.pagination?.pages || 1);
+        setTotalItems(data.pagination?.total || 0);
+
+        if ((data.mics || []).length === 0 && Object.values(filtros).some((v) => v)) {
+          toast.info("🔍 No se encontraron MICs con los filtros aplicados");
+        }
+      } catch (err) {
+        console.error("❌ Error cargando MICs:", err);
+        toast.error(`❌ Error cargando MICs: ${err.response?.data?.error || err.message}`);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [perPage]
+  );
+
+  // ========= Cargar stats (si existe endpoint) =========
+  const cargarEstadisticas = useCallback(async () => {
+    try {
+      // ✅ MANTENER: Esta línea ya funcionaba correctamente
+      const { data } = await api.get("mic-guardados/stats");
+      setStats(data);
+    } catch (err) {
+      // Si tu backend aún no tiene /stats, no bloqueamos la vista
+      console.warn("ℹ️ Estadísticas no disponibles:", err?.response?.status || err.message);
+      setStats(null);
+    }
+  }, []);
+
   useEffect(() => {
     cargarMics();
     cargarEstadisticas();
-  }, [cargarMics]);
+  }, [cargarMics, cargarEstadisticas]);
 
-  // Aplicar filtros
+  // ========= Filtros =========
   const aplicarFiltros = () => {
-    console.log('🔍 Aplicando filtros:', filters);
     cargarMics(1, filters);
     setCurrentPage(1);
     setShowFilters(false);
     toast.info("🔍 Filtros aplicados");
   };
 
-  // Limpiar filtros
   const limpiarFiltros = () => {
-    setFilters({
-      estado: '',
-      numero_carta: '',
-      fecha_desde: '',
-      fecha_hasta: '',
-      transportadora: '',
-      placa: '',
-      destino: ''
-    });
+    const limpia = {
+      estado: "",
+      numero_carta: "",
+      fecha_desde: "",
+      fecha_hasta: "",
+      transportadora: "",
+      placa: "",
+      destino: "",
+    };
+    setFilters(limpia);
     cargarMics();
     toast.info("🧹 Filtros limpiados");
   };
 
-  // Ver detalles de MIC
+  // ========= Acciones =========
   const verDetalles = async (micId) => {
     try {
-      console.log(`🔍 Cargando detalles del MIC ${micId}...`);
-      const response = await axios.get(`http://localhost:5000/api/mic-guardados/${micId}`);
-      setSelectedMic(response.data);
+      // ✅ CORREGIDO: Quité el / inicial
+      const { data } = await api.get(`mic-guardados/${micId}`);
+      setSelectedMic(data);
       setShowModal(true);
-      console.log('✅ Detalles cargados:', response.data);
-    } catch (error) {
-      console.error('❌ Error cargando detalles:', error);
-      toast.error('❌ Error cargando detalles del MIC');
+    } catch (err) {
+      console.warn("ℹ️ Detalle por API no disponible, intento con el item de la tabla.");
+      const fallback = mics.find((x) => x.id === micId);
+      if (fallback) {
+        setSelectedMic(fallback);
+        setShowModal(true);
+      } else {
+        toast.error("❌ No se pudo obtener el detalle del MIC.");
+      }
     }
   };
 
-  // Descargar PDF
   const descargarPDF = async (micId, numeroCarta) => {
     try {
-      console.log(`📄 Descargando PDF del MIC ${micId}...`);
-      const response = await axios.get(
-        `http://localhost:5000/api/mic-guardados/${micId}/pdf`,
-        { responseType: 'blob' }
-      );
-      
-      const blob = new Blob([response.data], { type: 'application/pdf' });
+      // ✅ CORREGIDO: Quité el / inicial
+      const response = await api.get(`mic-guardados/${micId}/pdf`, {
+        responseType: "blob",
+      });
+      const blob = new Blob([response.data], { type: "application/pdf" });
       const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `MIC_${numeroCarta || micId}_${new Date().toISOString().split('T')[0]}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `MIC_${numeroCarta || micId}_${new Date().toISOString().split("T")[0]}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
       window.URL.revokeObjectURL(url);
-      
-      toast.success('📄 PDF descargado exitosamente');
-      console.log('✅ PDF descargado');
-    } catch (error) {
-      console.error('❌ Error descargando PDF:', error);
-      toast.error('❌ Error descargando PDF');
+      toast.success("📄 PDF descargado");
+    } catch (err) {
+      console.error("❌ Error descargando PDF:", err);
+      toast.error("❌ Error descargando PDF");
     }
   };
 
-  // Anular MIC
   const anularMic = async (micId, numeroCarta) => {
-    if (!window.confirm(`¿Estás seguro de anular el MIC ${numeroCarta}?`)) {
-      return;
-    }
-
+    if (!window.confirm(`¿Estás seguro de anular el MIC ${numeroCarta || micId}?`)) return;
     try {
-      console.log(`🗑️ Anulando MIC ${micId}...`);
-      await axios.delete(`http://localhost:5000/api/mic-guardados/${micId}`);
-      toast.success('✅ MIC anulado exitosamente');
+      // ✅ CORREGIDO: Quité el / inicial
+      await api.delete(`mic-guardados/${micId}`);
+      toast.success("✅ MIC anulado");
       cargarMics(currentPage, filters);
-      console.log('✅ MIC anulado');
-    } catch (error) {
-      console.error('❌ Error anulando MIC:', error);
-      toast.error('❌ Error anulando MIC');
+    } catch (err) {
+      console.error("❌ Error anulando MIC:", err);
+      toast.error("❌ Error anulando MIC");
     }
   };
 
-  // Cambiar página
   const cambiarPagina = (nuevaPagina) => {
     if (nuevaPagina >= 1 && nuevaPagina <= totalPages) {
       setCurrentPage(nuevaPagina);
@@ -171,36 +188,11 @@ export default function MICsGuardados() {
     }
   };
 
-  // Formatear fecha
-  const formatearFecha = (fecha) => {
-    if (!fecha) return "N/A";
-    try {
-      return new Date(fecha).toLocaleDateString('es-PY');
-    } catch {
-      return fecha;
-    }
-  };
-
-  // Formatear estado con color
-  const formatearEstado = (estado) => {
-    const colores = {
-      'PROVISORIO': 'bg-yellow-100 text-yellow-800',
-      'DEFINITIVO': 'bg-green-100 text-green-800',
-      'ANULADO': 'bg-red-100 text-red-800',
-      'EN_PROCESO': 'bg-blue-100 text-blue-800'
-    };
-    
-    return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${colores[estado] || 'bg-gray-100 text-gray-800'}`}>
-        {estado}
-      </span>
-    );
-  };
-
+  // ========= Render =========
   return (
     <div className="mics-guardados-container">
       <ToastContainer position="top-right" />
-      
+
       {/* Header */}
       <div className="header-section">
         <div className="header-content">
@@ -210,32 +202,22 @@ export default function MICsGuardados() {
               {totalItems} MICs registrados • Página {currentPage} de {totalPages}
             </p>
           </div>
-          
+
           <div className="header-actions">
-            <button
-              onClick={() => setShowStats(!showStats)}
-              className="btn-secondary"
-            >
-              📊 {showStats ? 'Ocultar' : 'Ver'} Estadísticas
+            <button onClick={() => setShowStats(!showStats)} className="btn-secondary">
+              📊 {showStats ? "Ocultar" : "Ver"} Estadísticas
             </button>
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="btn-primary"
-            >
-              🔍 {showFilters ? 'Ocultar' : 'Mostrar'} Filtros
+            <button onClick={() => setShowFilters(!showFilters)} className="btn-primary">
+              🔍 {showFilters ? "Ocultar" : "Mostrar"} Filtros
             </button>
-            <button
-              onClick={() => cargarMics(currentPage, filters)}
-              className="btn-primary"
-              disabled={loading}
-            >
+            <button onClick={() => cargarMics(currentPage, filters)} className="btn-primary" disabled={loading}>
               🔄 Actualizar
             </button>
           </div>
         </div>
       </div>
 
-      {/* Estadísticas */}
+      {/* Stats */}
       {showStats && stats && (
         <div className="stats-section">
           <div className="stats-grid">
@@ -251,7 +233,7 @@ export default function MICsGuardados() {
               <div className="stat-value">{stats.mics_semana}</div>
               <div className="stat-label">Esta semana</div>
             </div>
-            {stats.por_estado.map((est, idx) => (
+            {(stats.por_estado || []).map((est, idx) => (
               <div key={idx} className="stat-card">
                 <div className="stat-value">{est.cantidad}</div>
                 <div className="stat-label">{est.estado}</div>
@@ -269,7 +251,7 @@ export default function MICsGuardados() {
               <label>Estado</label>
               <select
                 value={filters.estado}
-                onChange={(e) => setFilters({...filters, estado: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, estado: e.target.value })}
                 className="filter-input"
               >
                 <option value="">Todos</option>
@@ -279,72 +261,72 @@ export default function MICsGuardados() {
                 <option value="EN_PROCESO">EN_PROCESO</option>
               </select>
             </div>
-            
+
             <div className="filter-group">
               <label>Nº Carta de Porte</label>
               <input
                 type="text"
                 value={filters.numero_carta}
-                onChange={(e) => setFilters({...filters, numero_carta: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, numero_carta: e.target.value })}
                 placeholder="Buscar por número..."
                 className="filter-input"
               />
             </div>
-            
+
             <div className="filter-group">
               <label>Transportadora</label>
               <input
                 type="text"
                 value={filters.transportadora}
-                onChange={(e) => setFilters({...filters, transportadora: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, transportadora: e.target.value })}
                 placeholder="Buscar transportadora..."
                 className="filter-input"
               />
             </div>
-            
+
             <div className="filter-group">
               <label>Placa</label>
               <input
                 type="text"
                 value={filters.placa}
-                onChange={(e) => setFilters({...filters, placa: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, placa: e.target.value })}
                 placeholder="Buscar placa..."
                 className="filter-input"
               />
             </div>
-            
+
             <div className="filter-group">
               <label>Destino</label>
               <input
                 type="text"
                 value={filters.destino}
-                onChange={(e) => setFilters({...filters, destino: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, destino: e.target.value })}
                 placeholder="Buscar destino..."
                 className="filter-input"
               />
             </div>
-            
+
             <div className="filter-group">
               <label>Fecha Desde</label>
               <input
                 type="date"
                 value={filters.fecha_desde}
-                onChange={(e) => setFilters({...filters, fecha_desde: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, fecha_desde: e.target.value })}
                 className="filter-input"
               />
             </div>
-            
+
             <div className="filter-group">
               <label>Fecha Hasta</label>
               <input
                 type="date"
                 value={filters.fecha_hasta}
-                onChange={(e) => setFilters({...filters, fecha_hasta: e.target.value})}
+                onChange={(e) => setFilters({ ...filters, fecha_hasta: e.target.value })}
                 className="filter-input"
               />
             </div>
           </div>
-          
+
           <div className="filters-actions">
             <button onClick={aplicarFiltros} className="btn-primary">
               🔍 Aplicar Filtros
@@ -356,7 +338,7 @@ export default function MICsGuardados() {
         </div>
       )}
 
-      {/* Tabla de MICs */}
+      {/* Tabla */}
       <div className="table-section">
         {loading ? (
           <div className="loading-state">
@@ -390,35 +372,34 @@ export default function MICsGuardados() {
                 {mics.map((mic) => (
                   <tr key={mic.id} className="table-row">
                     <td className="id-cell">#{mic.id}</td>
+
+                    {/* Ajuste de nombres al backend */}
                     <td className="numero-cell">
-                      {mic.numero_carta_porte || "Sin número"}
+                      {mic.campo_23_numero_campo2_crt || "Sin número"}
                     </td>
-                    <td className="estado-cell">
-                      {formatearEstado(mic.estado)}
+
+                    <td className="estado-cell">{formatearEstado(mic.campo_4_estado)}</td>
+
+                    <td className="fecha-cell">{formatearFecha(mic.campo_6_fecha)}</td>
+
+                    <td className="transportadora-cell" title={mic.campo_1_transporte}>
+                      {mic.campo_1_transporte
+                        ? mic.campo_1_transporte.length > 30
+                          ? mic.campo_1_transporte.substring(0, 30) + "..."
+                          : mic.campo_1_transporte
+                        : "N/A"}
                     </td>
-                    <td className="fecha-cell">
-                      {formatearFecha(mic.fecha_emision)}
-                    </td>
-                    <td className="transportadora-cell" title={mic.transportadora}>
-                      {mic.transportadora ? 
-                        (mic.transportadora.length > 30 ? 
-                          mic.transportadora.substring(0, 30) + "..." : 
-                          mic.transportadora
-                        ) : "N/A"
-                      }
-                    </td>
-                    <td className="destino-cell">
-                      {mic.destino || "N/A"}
-                    </td>
-                    <td className="placa-cell">
-                      {mic.placa_camion || "N/A"}
-                    </td>
+
+                    <td className="destino-cell">{mic.campo_8_destino || "N/A"}</td>
+
+                    <td className="placa-cell">{mic.campo_11_placa || "N/A"}</td>
+
                     <td className="peso-cell">
-                      {mic.peso_bruto ? `${mic.peso_bruto} kg` : "N/A"}
+                      {mic.campo_32_peso_bruto ? `${mic.campo_32_peso_bruto} kg` : "N/A"}
                     </td>
-                    <td className="creado-cell">
-                      {formatearFecha(mic.creado_en)}
-                    </td>
+
+                    <td className="creado-cell">{formatearFecha(mic.creado_en)}</td>
+
                     <td className="acciones-cell">
                       <div className="acciones-group">
                         <button
@@ -429,15 +410,19 @@ export default function MICsGuardados() {
                           👁️
                         </button>
                         <button
-                          onClick={() => descargarPDF(mic.id, mic.numero_carta_porte)}
+                          onClick={() =>
+                            descargarPDF(mic.id, mic.campo_23_numero_campo2_crt)
+                          }
                           className="btn-action btn-download"
                           title="Descargar PDF"
                         >
                           📄
                         </button>
-                        {mic.estado !== 'ANULADO' && (
+                        {mic.campo_4_estado !== "ANULADO" && (
                           <button
-                            onClick={() => anularMic(mic.id, mic.numero_carta_porte)}
+                            onClick={() =>
+                              anularMic(mic.id, mic.campo_23_numero_campo2_crt)
+                            }
                             className="btn-action btn-delete"
                             title="Anular MIC"
                           >
@@ -458,9 +443,10 @@ export default function MICsGuardados() {
       {totalPages > 1 && (
         <div className="pagination-section">
           <div className="pagination-info">
-            Mostrando {((currentPage - 1) * perPage) + 1} a {Math.min(currentPage * perPage, totalItems)} de {totalItems} registros
+            Mostrando {(currentPage - 1) * perPage + 1} a{" "}
+            {Math.min(currentPage * perPage, totalItems)} de {totalItems} registros
           </div>
-          
+
           <div className="pagination-controls">
             <button
               onClick={() => cambiarPagina(1)}
@@ -476,7 +462,7 @@ export default function MICsGuardados() {
             >
               ⬅️
             </button>
-            
+
             {[...Array(Math.min(5, totalPages))].map((_, i) => {
               const pageNum = Math.max(1, currentPage - 2) + i;
               if (pageNum <= totalPages) {
@@ -484,7 +470,9 @@ export default function MICsGuardados() {
                   <button
                     key={pageNum}
                     onClick={() => cambiarPagina(pageNum)}
-                    className={`pagination-btn ${pageNum === currentPage ? 'active' : ''}`}
+                    className={`pagination-btn ${
+                      pageNum === currentPage ? "active" : ""
+                    }`}
                   >
                     {pageNum}
                   </button>
@@ -492,7 +480,7 @@ export default function MICsGuardados() {
               }
               return null;
             })}
-            
+
             <button
               onClick={() => cambiarPagina(currentPage + 1)}
               disabled={currentPage === totalPages}
@@ -511,35 +499,31 @@ export default function MICsGuardados() {
         </div>
       )}
 
-      {/* Modal de detalles */}
+      {/* Modal */}
       {showModal && selectedMic && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2>📋 Detalles del MIC #{selectedMic.id}</h2>
-              <button
-                onClick={() => setShowModal(false)}
-                className="modal-close"
-              >
+              <button onClick={() => setShowModal(false)} className="modal-close">
                 ✕
               </button>
             </div>
-            
+
             <div className="modal-body">
               <MICDetalles mic={selectedMic} />
             </div>
-            
+
             <div className="modal-footer">
               <button
-                onClick={() => descargarPDF(selectedMic.id, selectedMic.campo_23_numero_campo2_crt)}
+                onClick={() =>
+                  descargarPDF(selectedMic.id, selectedMic.campo_23_numero_campo2_crt)
+                }
                 className="btn-primary"
               >
                 📄 Descargar PDF
               </button>
-              <button
-                onClick={() => setShowModal(false)}
-                className="btn-secondary"
-              >
+              <button onClick={() => setShowModal(false)} className="btn-secondary">
                 Cerrar
               </button>
             </div>
@@ -550,37 +534,37 @@ export default function MICsGuardados() {
   );
 }
 
-// Componente para mostrar detalles del MIC
+// -------- Detalle --------
 function MICDetalles({ mic }) {
   const campos = [
-    { key: 'campo_23_numero_campo2_crt', label: 'Nº Carta de Porte', importante: true },
-    { key: 'campo_4_estado', label: 'Estado', importante: true },
-    { key: 'campo_6_fecha', label: 'Fecha de Emisión', importante: true },
-    { key: 'campo_1_transporte', label: 'Transportadora', multilinea: true },
-    { key: 'campo_2_numero', label: 'Rol Contribuyente' },
-    { key: 'campo_7_pto_seguro', label: 'Puerto Seguro' },
-    { key: 'campo_8_destino', label: 'Destino' },
-    { key: 'campo_10_numero', label: 'Rol Contribuyente (10)' },
-    { key: 'campo_11_placa', label: 'Placa Camión' },
-    { key: 'campo_12_modelo_chasis', label: 'Modelo/Chasis' },
-    { key: 'campo_14_anio', label: 'Año' },
-    { key: 'campo_15_placa_semi', label: 'Placa Semi' },
-    { key: 'campo_24_aduana', label: 'Aduana' },
-    { key: 'campo_25_moneda', label: 'Moneda' },
-    { key: 'campo_26_pais', label: 'País Origen' },
-    { key: 'campo_27_valor_campo16', label: 'Valor FOT' },
-    { key: 'campo_28_total', label: 'Flete Total' },
-    { key: 'campo_29_seguro', label: 'Seguro' },
-    { key: 'campo_30_tipo_bultos', label: 'Tipo Bultos' },
-    { key: 'campo_31_cantidad', label: 'Cantidad' },
-    { key: 'campo_32_peso_bruto', label: 'Peso Bruto' },
-    { key: 'campo_33_datos_campo1_crt', label: 'Remitente', multilinea: true },
-    { key: 'campo_34_datos_campo4_crt', label: 'Destinatario', multilinea: true },
-    { key: 'campo_35_datos_campo6_crt', label: 'Consignatario', multilinea: true },
-    { key: 'campo_36_factura_despacho', label: 'Documentos Anexos' },
-    { key: 'campo_37_valor_manual', label: 'Valor Manual' },
-    { key: 'campo_38_datos_campo11_crt', label: 'Detalles Mercadería', multilinea: true },
-    { key: 'campo_40_tramo', label: 'Tramo' },
+    { key: "campo_23_numero_campo2_crt", label: "Nº Carta de Porte", importante: true },
+    { key: "campo_4_estado", label: "Estado", importante: true },
+    { key: "campo_6_fecha", label: "Fecha de Emisión", importante: true },
+    { key: "campo_1_transporte", label: "Transportadora", multilinea: true },
+    { key: "campo_2_numero", label: "Rol Contribuyente" },
+    { key: "campo_7_pto_seguro", label: "Puerto Seguro" },
+    { key: "campo_8_destino", label: "Destino" },
+    { key: "campo_10_numero", label: "Rol Contribuyente (10)" },
+    { key: "campo_11_placa", label: "Placa Camión" },
+    { key: "campo_12_modelo_chasis", label: "Modelo/Chasis" },
+    { key: "campo_14_anio", label: "Año" },
+    { key: "campo_15_placa_semi", label: "Placa Semi" },
+    { key: "campo_24_aduana", label: "Aduana" },
+    { key: "campo_25_moneda", label: "Moneda" },
+    { key: "campo_26_pais", label: "País Origen" },
+    { key: "campo_27_valor_campo16", label: "Valor FOT" },
+    { key: "campo_28_total", label: "Flete Total" },
+    { key: "campo_29_seguro", label: "Seguro" },
+    { key: "campo_30_tipo_bultos", label: "Tipo Bultos" },
+    { key: "campo_31_cantidad", label: "Cantidad" },
+    { key: "campo_32_peso_bruto", label: "Peso Bruto" },
+    { key: "campo_33_datos_campo1_crt", label: "Remitente", multilinea: true },
+    { key: "campo_34_datos_campo4_crt", label: "Destinatario", multilinea: true },
+    { key: "campo_35_datos_campo6_crt", label: "Consignatario", multilinea: true },
+    { key: "campo_36_factura_despacho", label: "Documentos Anexos" },
+    { key: "campo_37_valor_manual", label: "Valor Manual" },
+    { key: "campo_38_datos_campo11_crt", label: "Detalles Mercadería", multilinea: true },
+    { key: "campo_40_tramo", label: "Tramo" },
   ];
 
   return (
@@ -589,9 +573,13 @@ function MICDetalles({ mic }) {
         {campos.map(({ key, label, importante, multilinea }) => {
           const valor = mic[key];
           if (!valor) return null;
-
           return (
-            <div key={key} className={`detalle-item ${importante ? 'importante' : ''} ${multilinea ? 'multilinea' : ''}`}>
+            <div
+              key={key}
+              className={`detalle-item ${importante ? "importante" : ""} ${
+                multilinea ? "multilinea" : ""
+              }`}
+            >
               <label className="detalle-label">{label}:</label>
               <div className="detalle-valor">
                 {multilinea ? (
@@ -604,11 +592,15 @@ function MICDetalles({ mic }) {
           );
         })}
       </div>
-      
+
       <div className="detalles-meta">
-        <p><strong>Creado:</strong> {mic.creado_en}</p>
+        <p>
+          <strong>Creado:</strong> {mic.creado_en}
+        </p>
         {mic.crt_numero && (
-          <p><strong>CRT Origen:</strong> {mic.crt_numero}</p>
+          <p>
+            <strong>CRT Origen:</strong> {mic.crt_numero}
+          </p>
         )}
       </div>
     </div>

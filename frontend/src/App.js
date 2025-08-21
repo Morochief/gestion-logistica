@@ -21,9 +21,9 @@ import Parametros from "./pages/Parametros";
 import CRT from "./pages/CRT";
 import ListarCRT from "./pages/ListarCRT";
 
-import MICNuevo from "./pages/MICNuevo"; // <- crea este archivo
-import MICDetalle from "./pages/MICDetalle"; // <- crea este archivo
-import ListarMIC from "./pages/ListarMIC"; // <- crea este archivo
+import MICNuevo from "./pages/MICNuevo";
+import MICDetalle from "./pages/MICDetalle";
+// ❌ Eliminado: import ListarMIC from "./pages/ListarMIC";
 import MICsGuardados from "./pages/MICsGuardados";
 
 import PrivateRoute from "./components/PrivateRoute";
@@ -45,6 +45,7 @@ function App() {
             </PrivateRoute>
           }
         />
+
         <Route
           path="/usuarios"
           element={
@@ -166,7 +167,7 @@ function App() {
           }
         />
 
-        {/* MIC - FLUJO COMPLETO */}
+        {/* MIC - flujo clásico que mantenés */}
         <Route
           path="/mic/nuevo"
           element={
@@ -187,12 +188,26 @@ function App() {
             </PrivateRoute>
           }
         />
+
+        {/* 🔁 Reemplazo: ahora /mic usa MICsGuardados */}
         <Route
           path="/mic"
           element={
             <PrivateRoute>
               <Layout>
-                <ListarMIC />
+                <MICsGuardados />
+              </Layout>
+            </PrivateRoute>
+          }
+        />
+
+        {/* También podés entrar por /mics o /mics-guardados */}
+        <Route
+          path="/mics"
+          element={
+            <PrivateRoute>
+              <Layout>
+                <MICsGuardados />
               </Layout>
             </PrivateRoute>
           }

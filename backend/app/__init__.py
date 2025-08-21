@@ -44,6 +44,12 @@ def create_app():
         app.register_blueprint(mic_bp)
         app.register_blueprint(mic_guardados_bp)
 
+        # 🔍 DIAGNÓSTICO: Ver todas las rutas registradas
+        print("\n🔍 RUTAS REGISTRADAS EN FLASK:")
+        for rule in app.url_map.iter_rules():
+            print(f"   {rule.rule} -> {rule.methods}")
+        print("="*50)
+
     # 🚀 CORRIGE HEADERS DE CORS DESPUÉS DE CADA RESPUESTA
     @app.after_request
     def add_cors_headers(response):
