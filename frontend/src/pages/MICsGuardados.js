@@ -1,10 +1,385 @@
 // frontend/src/pages/MICsGuardados.js
-import React, { useState, useEffect, useCallback } from "react";
-import api from "../api/api"; // 👈 usa tu cliente centralizado
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import api from "../api/api";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import "./MICsGuardados.css";
+import ModalMICCompleto from "./ModalMICCompleto";
 
+// ✅ CONFIGURACIÓN DE ESTADOS Y TRANSICIONES (Sincronizada con backend)
+const ESTADOS_MIC = {
+  PROVISORIO: {
+    label: 'Provisorio',
+    color: 'bg-yellow-100 text-yellow-800 border-yellow-200',
+    icon: '📝',
+    canTransitionTo: ['DEFINITIVO', 'ANULADO'],
+    requiresConfirmation: false,
+    allowDirectEdit: true,
+    priority: 1
+  },
+  DEFINITIVO: {
+    label: 'Definitivo', 
+    color: 'bg-blue-100 text-blue-800 border-blue-200',
+    icon: '📋',
+    canTransitionTo: ['CONFIRMADO', 'EN_PROCESO', 'ANULADO'],
+    requiresConfirmation: true,
+    allowDirectEdit: true,
+    priority: 2
+  },
+  CONFIRMADO: {
+    label: 'Confirmado',
+    color: 'bg-green-100 text-green-800 border-green-200', 
+    icon: '✅',
+    canTransitionTo: ['EN_PROCESO', 'FINALIZADO', 'ANULADO'],
+    requiresConfirmation: true,
+    allowDirectEdit: false,
+    priority: 3
+  },
+  EN_PROCESO: {
+    label: 'En Proceso',
+    color: 'bg-purple-100 text-purple-800 border-purple-200',
+    icon: '⚙️', 
+    canTransitionTo: ['FINALIZADO', 'ANULADO'],
+    requiresConfirmation: true,
+    allowDirectEdit: false,
+    priority: 4
+  },
+  FINALIZADO: {
+    label: 'Finalizado',
+    color: 'bg-gray-100 text-gray-800 border-gray-200',
+    icon: '🏁',
+    canTransitionTo: [],
+    requiresConfirmation: false,
+    allowDirectEdit: false,
+    priority: 5,
+    isFinal: true
+  },
+  ANULADO: {
+    label: 'Anulado', 
+    color: 'bg-red-100 text-red-800 border-red-200',
+    icon: '❌',
+    canTransitionTo: [],
+    requiresConfirmation: false,
+    allowDirectEdit: false,
+    priority: 0,
+    isFinal: true
+  }
+};
+
+// ✅ HOOK PROFESIONAL PARA GESTIÓN DE ESTADOS
+const useEstadosMIC = () => {
+  const [loadingEstado, setLoadingEstado] = useState(null);
+  const [configuracionBackend, setConfiguracionBackend] = useState(null);
+
+  // Cargar configuración del backend (opcional)
+  useEffect(() => {
+    const cargarConfiguracion = async () => {
+      try {
+        const { data } = await api.get('mic-guardados/estados-config');
+        setConfiguracionBackend(data.estados);
+      } catch (error) {
+        console.warn('⚠️ No se pudo cargar configuración del backend, usando local');
+      }
+    };
+    cargarConfiguracion();
+  }, []);
+
+  const puedeTransicionar = (estadoActual, estadoDestino) => {
+    const config = ESTADOS_MIC[estadoActual];
+    return config && config.canTransitionTo.includes(estadoDestino);
+  };
+
+  const obtenerEstadosDisponibles = (estadoActual) => {
+    const config = ESTADOS_MIC[estadoActual];
+    return config ? config.canTransitionTo : [];
+  };
+
+  const requiereConfirmacion = (estadoActual, estadoDestino) => {
+    const config = ESTADOS_MIC[estadoDestino];
+    return config && config.requiresConfirmation;
+  };
+
+  const puedeEditarDirectamente = (estadoActual) => {
+    const config = ESTADOS_MIC[estadoActual];
+    return config && config.allowDirectEdit;
+  };
+
+  const cambiarEstado = async (micId, estadoActual, estadoDestino, numeroCarta, onSuccess) => {
+    // Validar transición
+    if (!puedeTransicionar(estadoActual, estadoDestino)) {
+      toast.error(`❌ No se puede cambiar de ${estadoActual} a ${estadoDestino}`);
+      return false;
+    }
+
+    // Confirmación si es requerida
+    if (requiereConfirmacion(estadoActual, estadoDestino)) {
+      const configDestino = ESTADOS_MIC[estadoDestino];
+      const mensaje = `¿Confirmar cambio de estado del MIC ${numeroCarta || micId}?\n\n${estadoActual} → ${estadoDestino}\n\n${configDestino.icon} ${configDestino.label}`;
+      if (!window.confirm(mensaje)) return false;
+    }
+
+    try {
+      setLoadingEstado(micId);
+      
+      const response = await api.put(`mic-guardados/${micId}`, {
+        campo_4_estado: estadoDestino,
+        ultima_actualizacion: new Date().toISOString(),
+        cambio_estado_motivo: `Cambio de ${estadoActual} a ${estadoDestino}`,
+        usuario_actualizacion: "Usuario Sistema", // Reemplazar con usuario real
+      });
+
+      const configDestino = ESTADOS_MIC[estadoDestino];
+      toast.success(`✅ ${configDestino.icon} Estado cambiado a ${configDestino.label}`, {
+        position: "top-right",
+        autoClose: 3000,
+      });
+
+      onSuccess && onSuccess(response.data);
+      return true;
+      
+    } catch (error) {
+      console.error("❌ Error cambiando estado:", error);
+      
+      if (error.response?.status === 400) {
+        // Error de validación de transición
+        const errorData = error.response.data;
+        toast.error(`❌ ${errorData.error}`, { autoClose: 5000 });
+        
+        if (errorData.transiciones_permitidas) {
+          const permitidas = errorData.transiciones_permitidas.map(e => ESTADOS_MIC[e]?.label || e).join(', ');
+          toast.info(`💡 Transiciones permitidas desde ${estadoActual}: ${permitidas}`, { autoClose: 7000 });
+        }
+      } else if (error.response?.status === 403) {
+        // Error de permisos de edición
+        toast.error(`🔒 ${error.response.data.error}`, { autoClose: 5000 });
+      } else {
+        toast.error(`❌ Error: ${error.response?.data?.error || error.message}`, { autoClose: 5000 });
+      }
+      
+      return false;
+    } finally {
+      setLoadingEstado(null);
+    }
+  };
+
+  return {
+    cambiarEstado,
+    puedeTransicionar,
+    obtenerEstadosDisponibles,
+    requiereConfirmacion,
+    puedeEditarDirectamente,
+    loadingEstado,
+    ESTADOS_MIC,
+    configuracionBackend
+  };
+};
+
+// ✅ COMPONENTE PROFESIONAL DE GESTIÓN DE ESTADO
+const GestorEstadoMIC = ({ mic, onEstadoCambiado, compact = false }) => {
+  const { 
+    cambiarEstado, 
+    obtenerEstadosDisponibles, 
+    loadingEstado,
+    ESTADOS_MIC 
+  } = useEstadosMIC();
+
+  const [showDropdown, setShowDropdown] = useState(false);
+  const dropdownRef = useRef(null);
+  const estadoActual = mic.campo_4_estado || 'PROVISORIO';
+  const configEstado = ESTADOS_MIC[estadoActual];
+  const estadosDisponibles = obtenerEstadosDisponibles(estadoActual);
+
+  // Cerrar dropdown al hacer click fuera
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setShowDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleCambioEstado = async (nuevoEstado) => {
+    const exito = await cambiarEstado(
+      mic.id,
+      estadoActual,
+      nuevoEstado,
+      mic.campo_23_numero_campo2_crt,
+      onEstadoCambiado
+    );
+    
+    if (exito) {
+      setShowDropdown(false);
+    }
+  };
+
+  // Obtener acción rápida más común según el estado
+  const getAccionRapida = () => {
+    switch (estadoActual) {
+      case 'PROVISORIO':
+        return { estado: 'DEFINITIVO', label: 'Confirmar', icon: '✅', color: 'bg-green-500 hover:bg-green-600' };
+      case 'DEFINITIVO':
+        return { estado: 'CONFIRMADO', label: 'Aprobar', icon: '👍', color: 'bg-blue-500 hover:bg-blue-600' };
+      case 'CONFIRMADO':
+        return { estado: 'EN_PROCESO', label: 'Procesar', icon: '⚙️', color: 'bg-purple-500 hover:bg-purple-600' };
+      case 'EN_PROCESO':
+        return { estado: 'FINALIZADO', label: 'Finalizar', icon: '🏁', color: 'bg-gray-500 hover:bg-gray-600' };
+      default:
+        return null;
+    }
+  };
+
+  const accionRapida = getAccionRapida();
+
+  if (compact) {
+    // Versión compacta para tabla
+    return (
+      <div className="flex items-center space-x-1">
+        {/* Estado actual */}
+        <span className={`px-2 py-1 rounded-full text-xs font-medium border ${configEstado?.color || 'bg-gray-100 text-gray-800 border-gray-200'}`}>
+          <span className="mr-1">{configEstado?.icon}</span>
+          {configEstado?.label || estadoActual}
+        </span>
+
+        {/* Acción rápida */}
+        {accionRapida && estadosDisponibles.includes(accionRapida.estado) && (
+          <button
+            onClick={() => handleCambioEstado(accionRapida.estado)}
+            disabled={loadingEstado === mic.id}
+            className={`px-2 py-1 rounded text-xs text-white font-medium transition-colors ${
+              loadingEstado === mic.id ? 'bg-gray-400 cursor-not-allowed' : accionRapida.color
+            }`}
+            title={`Cambiar a ${ESTADOS_MIC[accionRapida.estado]?.label}`}
+          >
+            {loadingEstado === mic.id ? '...' : accionRapida.icon}
+          </button>
+        )}
+
+        {/* Dropdown para otros estados */}
+        {estadosDisponibles.length > (accionRapida ? 1 : 0) && (
+          <div className="relative" ref={dropdownRef}>
+            <button
+              onClick={() => setShowDropdown(!showDropdown)}
+              className="px-2 py-1 bg-gray-500 text-white rounded text-xs hover:bg-gray-600 transition-colors"
+              title="Más opciones de estado"
+            >
+              ▼
+            </button>
+
+            {showDropdown && (
+              <div className="absolute top-full left-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-48">
+                <div className="py-1">
+                  <div className="px-3 py-2 text-xs font-medium text-gray-500 border-b border-gray-100">
+                    Cambiar estado
+                  </div>
+                  {estadosDisponibles
+                    .filter(estado => !accionRapida || estado !== accionRapida.estado)
+                    .map(estado => {
+                      const config = ESTADOS_MIC[estado];
+                      return (
+                        <button
+                          key={estado}
+                          onClick={() => handleCambioEstado(estado)}
+                          className="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 flex items-center space-x-2 transition-colors"
+                        >
+                          <span>{config?.icon}</span>
+                          <div className="flex-1">
+                            <span className="font-medium">{config?.label}</span>
+                            {config?.requiresConfirmation && (
+                              <div className="text-xs text-gray-500">Requiere confirmación</div>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Versión completa para modal/detalles
+  return (
+    <div className="estado-gestor-completo p-4 bg-gray-50 rounded-lg">
+      <div className="mb-4">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Estado Actual
+        </label>
+        <div className={`inline-flex items-center px-4 py-2 rounded-lg border-2 ${configEstado?.color || 'bg-gray-100 text-gray-800 border-gray-200'}`}>
+          <span className="text-lg mr-2">{configEstado?.icon}</span>
+          <span className="font-medium">{configEstado?.label || estadoActual}</span>
+        </div>
+      </div>
+
+      {estadosDisponibles.length > 0 && (
+        <div className="mb-4">
+          <label className="block text-sm font-medium text-gray-700 mb-3">
+            Transiciones Disponibles
+          </label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {estadosDisponibles.map(estado => {
+              const config = ESTADOS_MIC[estado];
+              const esAccionRapida = accionRapida && estado === accionRapida.estado;
+              
+              return (
+                <button
+                  key={estado}
+                  onClick={() => handleCambioEstado(estado)}
+                  disabled={loadingEstado === mic.id}
+                  className={`p-4 border-2 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed ${
+                    esAccionRapida 
+                      ? 'border-green-300 bg-green-50 hover:bg-green-100' 
+                      : 'border-gray-200 bg-white hover:bg-gray-50'
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    <span className="text-2xl">{config?.icon}</span>
+                    <div className="text-left flex-1">
+                      <div className="font-medium text-sm">{config?.label}</div>
+                      {config?.requiresConfirmation && (
+                        <div className="text-xs text-gray-500 mt-1">
+                          🔔 Requiere confirmación
+                        </div>
+                      )}
+                      {esAccionRapida && (
+                        <div className="text-xs text-green-600 mt-1 font-medium">
+                          ⚡ Acción recomendada
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {estadosDisponibles.length === 0 && (
+        <div className="text-sm text-gray-500 italic p-3 bg-gray-100 rounded-lg">
+          {configEstado?.isFinal 
+            ? `🏁 ${configEstado?.label} es un estado final. No hay más transiciones disponibles.`
+            : `No hay transiciones de estado disponibles desde ${configEstado?.label || estadoActual}`
+          }
+        </div>
+      )}
+
+      {loadingEstado === mic.id && (
+        <div className="mt-3 flex items-center justify-center text-sm text-gray-600">
+          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+          Actualizando estado...
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ========== COMPONENTE PRINCIPAL MICsGuardados ==========
 export default function MICsGuardados() {
   const [mics, setMics] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -17,6 +392,17 @@ export default function MICsGuardados() {
   const [showFilters, setShowFilters] = useState(false);
   const [showStats, setShowStats] = useState(false);
   const [stats, setStats] = useState(null);
+
+  // Estados para edición
+  const [modalEdicion, setModalEdicion] = useState({
+    isOpen: false,
+    mic: null,
+    accion: 'editar'
+  });
+  const [loadingAction, setLoadingAction] = useState(null);
+
+  // Hook de estados MIC
+  const { puedeEditarDirectamente, ESTADOS_MIC } = useEstadosMIC();
 
   // Filtros
   const [filters, setFilters] = useState({
@@ -33,7 +419,7 @@ export default function MICsGuardados() {
   const formatearFecha = (fecha) => {
     if (!fecha) return "N/A";
     try {
-      const d = new Date(fecha); // admite 'YYYY-MM-DD' o 'YYYY-MM-DD HH:mm:ss'
+      const d = new Date(fecha);
       if (isNaN(d.getTime())) return fecha;
       return d.toLocaleDateString("es-PY");
     } catch {
@@ -41,22 +427,27 @@ export default function MICsGuardados() {
     }
   };
 
-  const formatearEstado = (estado) => {
-    const colores = {
-      PROVISORIO: "bg-yellow-100 text-yellow-800",
-      DEFINITIVO: "bg-green-100 text-green-800",
-      ANULADO: "bg-red-100 text-red-800",
-      EN_PROCESO: "bg-blue-100 text-blue-800",
-    };
-    return (
-      <span
-        className={`px-2 py-1 rounded-full text-xs font-medium ${
-          colores[estado] || "bg-gray-100 text-gray-800"
-        }`}
-      >
-        {estado || "N/A"}
-      </span>
-    );
+  // Formatear datos numéricos para backend
+  const formatearNumeroParaBackend = (valor, tipoFormato = 'decimal') => {
+    if (!valor) return null;
+    
+    const numero = parseFloat(valor.toString().replace(',', '.'));
+    if (isNaN(numero)) return null;
+    
+    switch (tipoFormato) {
+      case 'peso':
+        return Number(numero.toFixed(3));
+      case 'decimal':
+        return Number(numero.toFixed(2));
+      case 'entero':
+        return Number(Math.round(numero));
+      case 'string':
+        return numero.toString();
+      case 'anio':
+        return Math.round(numero).toString();
+      default:
+        return Number(numero.toFixed(2));
+    }
   };
 
   // ========= Cargar lista =========
@@ -65,7 +456,6 @@ export default function MICsGuardados() {
       setLoading(true);
       try {
         const params = { page, per_page: perPage, ...filtros };
-        // ✅ CORREGIDO: Quité el /api inicial para evitar duplicación
         const { data } = await api.get("mic-guardados/", { params });
 
         setMics(data.mics || []);
@@ -86,14 +476,12 @@ export default function MICsGuardados() {
     [perPage]
   );
 
-  // ========= Cargar stats (si existe endpoint) =========
+  // Cargar estadísticas
   const cargarEstadisticas = useCallback(async () => {
     try {
-      // ✅ MANTENER: Esta línea ya funcionaba correctamente
       const { data } = await api.get("mic-guardados/stats");
       setStats(data);
     } catch (err) {
-      // Si tu backend aún no tiene /stats, no bloqueamos la vista
       console.warn("ℹ️ Estadísticas no disponibles:", err?.response?.status || err.message);
       setStats(null);
     }
@@ -127,10 +515,144 @@ export default function MICsGuardados() {
     toast.info("🧹 Filtros limpiados");
   };
 
-  // ========= Acciones =========
+  // ========== FUNCIONES DE EDICIÓN ==========
+  
+  const editarMIC = async (micId) => {
+    const mic = mics.find(m => m.id === micId);
+    
+    // Validar si puede editar según el estado
+    if (mic && !puedeEditarDirectamente(mic.campo_4_estado)) {
+      toast.warning(`⚠️ No se puede editar un MIC en estado ${mic.campo_4_estado}. Solo se permite cambio de estado.`);
+      return;
+    }
+
+    try {
+      console.log(`🔄 Cargando MIC ${micId} para edición...`);
+      setLoadingAction(micId);
+
+      const { data } = await api.get(`mic-guardados/${micId}`);
+      
+      console.log("✅ MIC cargado para edición:", data);
+
+      setModalEdicion({
+        isOpen: true,
+        mic: data,
+        accion: 'editar'
+      });
+
+    } catch (error) {
+      console.error("❌ Error cargando MIC para edición:", error);
+      toast.error("❌ Error al cargar MIC para edición");
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const guardarCambiosMIC = async (datosModal) => {
+    const mic = modalEdicion.mic;
+    if (!mic) return;
+
+    try {
+      console.log(`🔄 Guardando cambios del MIC ${mic.id}...`);
+      setLoadingAction(mic.id);
+
+      // FORMATEAR DATOS NUMÉRICOS CORRECTAMENTE
+      const datosFormateados = { ...datosModal };
+      
+      const camposNumericos = {
+        'campo_32_peso_bruto': 'peso',
+        'campo_27_valor_campo16': 'decimal',
+        'campo_28_total': 'decimal', 
+        'campo_29_seguro': 'decimal',
+        'campo_37_valor_manual': 'decimal',
+        'campo_14_anio': 'anio',
+        'campo_31_cantidad': 'string',
+        'campo_10_numero': 'string',
+      };
+
+      Object.keys(camposNumericos).forEach(campo => {
+        if (datosFormateados[campo]) {
+          const tipoFormato = camposNumericos[campo];
+          datosFormateados[campo] = formatearNumeroParaBackend(datosFormateados[campo], tipoFormato);
+        }
+      });
+
+      const camposTexto = [
+        'campo_1_transporte', 'campo_2_numero', 'campo_3_transporte', 
+        'campo_7_pto_seguro', 'campo_8_destino', 'campo_11_placa', 
+        'campo_12_modelo_chasis', 'campo_15_placa_semi', 'campo_24_aduana', 
+        'campo_25_moneda', 'campo_26_pais', 'campo_30_tipo_bultos', 
+        'campo_36_factura_despacho', 'campo_38_datos_campo11_crt', 
+        'campo_40_tramo', 'campo_4_estado', 'campo_5_hoja', 'campo_6_fecha'
+      ];
+
+      camposTexto.forEach(campo => {
+        if (datosFormateados[campo] !== undefined && datosFormateados[campo] !== null) {
+          datosFormateados[campo] = datosFormateados[campo].toString();
+        }
+      });
+
+      await api.put(`mic-guardados/${mic.id}`, {
+        ...datosFormateados,
+        ultima_actualizacion: new Date().toISOString(),
+        usuario_actualizacion: "Usuario Sistema",
+      });
+
+      toast.success(
+        `✅ MIC ${mic.campo_23_numero_campo2_crt || mic.id} actualizado exitosamente!`
+      );
+
+      setModalEdicion({ isOpen: false, mic: null, accion: null });
+      cargarMics(currentPage, filters);
+
+    } catch (error) {
+      console.error("❌ Error actualizando MIC:", error);
+      
+      if (error.response?.status === 400) {
+        toast.error(`❌ ${error.response.data.error}`);
+      } else if (error.response?.status === 403) {
+        toast.error(`🔒 ${error.response.data.error}`);
+      } else if (error.response?.status === 404) {
+        toast.error("❌ MIC no encontrado");
+      } else {
+        toast.error(`❌ Error actualizando MIC: ${error.response?.data?.error || error.message}`);
+      }
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const duplicarMIC = async (micId) => {
+    if (!window.confirm("¿Crear una copia de este MIC?")) return;
+
+    try {
+      setLoadingAction(micId);
+      
+      const { data } = await api.post(`mic-guardados/${micId}/duplicate`);
+      
+      toast.success(
+        `✅ MIC duplicado exitosamente!\n🆔 Nuevo ID: ${data.id}`
+      );
+      
+      cargarMics(currentPage, filters);
+      
+    } catch (error) {
+      console.error("❌ Error duplicando MIC:", error);
+      toast.error(
+        `❌ Error duplicando MIC: ${error.response?.data?.error || error.message}`
+      );
+    } finally {
+      setLoadingAction(null);
+    }
+  };
+
+  const cerrarModalEdicion = () => {
+    setModalEdicion({ isOpen: false, mic: null, accion: null });
+  };
+
+  // ========= Acciones EXISTENTES =========
   const verDetalles = async (micId) => {
     try {
-      // ✅ CORREGIDO: Quité el / inicial
       const { data } = await api.get(`mic-guardados/${micId}`);
       setSelectedMic(data);
       setShowModal(true);
@@ -148,7 +670,6 @@ export default function MICsGuardados() {
 
   const descargarPDF = async (micId, numeroCarta) => {
     try {
-      // ✅ CORREGIDO: Quité el / inicial
       const response = await api.get(`mic-guardados/${micId}/pdf`, {
         responseType: "blob",
       });
@@ -171,7 +692,6 @@ export default function MICsGuardados() {
   const anularMic = async (micId, numeroCarta) => {
     if (!window.confirm(`¿Estás seguro de anular el MIC ${numeroCarta || micId}?`)) return;
     try {
-      // ✅ CORREGIDO: Quité el / inicial
       await api.delete(`mic-guardados/${micId}`);
       toast.success("✅ MIC anulado");
       cargarMics(currentPage, filters);
@@ -191,7 +711,7 @@ export default function MICsGuardados() {
   // ========= Render =========
   return (
     <div className="mics-guardados-container">
-      <ToastContainer position="top-right" />
+      <ToastContainer position="top-right" autoClose={4000} />
 
       {/* Header */}
       <div className="header-section">
@@ -255,10 +775,11 @@ export default function MICsGuardados() {
                 className="filter-input"
               >
                 <option value="">Todos</option>
-                <option value="PROVISORIO">PROVISORIO</option>
-                <option value="DEFINITIVO">DEFINITIVO</option>
-                <option value="ANULADO">ANULADO</option>
-                <option value="EN_PROCESO">EN_PROCESO</option>
+                {Object.entries(ESTADOS_MIC).map(([key, config]) => (
+                  <option key={key} value={key}>
+                    {config.icon} {config.label}
+                  </option>
+                ))}
               </select>
             </div>
 
@@ -373,12 +894,18 @@ export default function MICsGuardados() {
                   <tr key={mic.id} className="table-row">
                     <td className="id-cell">#{mic.id}</td>
 
-                    {/* Ajuste de nombres al backend */}
                     <td className="numero-cell">
                       {mic.campo_23_numero_campo2_crt || "Sin número"}
                     </td>
 
-                    <td className="estado-cell">{formatearEstado(mic.campo_4_estado)}</td>
+                    {/* ✅ NUEVA CELDA DE ESTADO PROFESIONAL */}
+                    <td className="estado-cell">
+                      <GestorEstadoMIC 
+                        mic={mic} 
+                        onEstadoCambiado={() => cargarMics(currentPage, filters)}
+                        compact={true}
+                      />
+                    </td>
 
                     <td className="fecha-cell">{formatearFecha(mic.campo_6_fecha)}</td>
 
@@ -409,6 +936,60 @@ export default function MICsGuardados() {
                         >
                           👁️
                         </button>
+
+                        {/* ✅ BOTÓN EDITAR CON VALIDACIÓN DE ESTADO */}
+                        {puedeEditarDirectamente(mic.campo_4_estado) ? (
+                          <button
+                            onClick={() => editarMIC(mic.id)}
+                            disabled={loadingAction === mic.id}
+                            className="btn-action btn-edit"
+                            title="Editar MIC"
+                            style={{
+                              backgroundColor: loadingAction === mic.id ? '#ccc' : '#f59e0b',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '4px 8px',
+                              cursor: loadingAction === mic.id ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            {loadingAction === mic.id ? "..." : "✏️"}
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => toast.info(`ℹ️ No se puede editar en estado ${mic.campo_4_estado}. Solo cambio de estado permitido.`)}
+                            className="btn-action btn-edit-disabled"
+                            title={`No editable en estado ${mic.campo_4_estado}`}
+                            style={{
+                              backgroundColor: '#e5e7eb',
+                              color: '#6b7280',
+                              border: 'none',
+                              borderRadius: '4px',
+                              padding: '4px 8px',
+                              cursor: 'not-allowed'
+                            }}
+                          >
+                            🔒
+                          </button>
+                        )}
+
+                        <button
+                          onClick={() => duplicarMIC(mic.id)}
+                          disabled={loadingAction === mic.id}
+                          className="btn-action btn-duplicate"
+                          title="Duplicar MIC"
+                          style={{
+                            backgroundColor: loadingAction === mic.id ? '#ccc' : '#3b82f6',
+                            color: 'white',
+                            border: 'none',
+                            borderRadius: '4px',
+                            padding: '4px 8px',
+                            cursor: loadingAction === mic.id ? 'not-allowed' : 'pointer'
+                          }}
+                        >
+                          {loadingAction === mic.id ? "..." : "📋"}
+                        </button>
+
                         <button
                           onClick={() =>
                             descargarPDF(mic.id, mic.campo_23_numero_campo2_crt)
@@ -418,7 +999,8 @@ export default function MICsGuardados() {
                         >
                           📄
                         </button>
-                        {mic.campo_4_estado !== "ANULADO" && (
+
+                        {mic.campo_4_estado !== "ANULADO" && mic.campo_4_estado !== "FINALIZADO" && (
                           <button
                             onClick={() =>
                               anularMic(mic.id, mic.campo_23_numero_campo2_crt)
@@ -499,7 +1081,7 @@ export default function MICsGuardados() {
         </div>
       )}
 
-      {/* Modal */}
+      {/* Modal ORIGINAL para ver detalles */}
       {showModal && selectedMic && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
@@ -511,7 +1093,7 @@ export default function MICsGuardados() {
             </div>
 
             <div className="modal-body">
-              <MICDetalles mic={selectedMic} />
+              <MICDetalles mic={selectedMic} onEstadoCambiado={() => cargarMics(currentPage, filters)} />
             </div>
 
             <div className="modal-footer">
@@ -530,12 +1112,24 @@ export default function MICsGuardados() {
           </div>
         </div>
       )}
+
+      {/* MODAL DE EDICIÓN */}
+      <ModalMICCompleto
+        isOpen={modalEdicion.isOpen}
+        onClose={cerrarModalEdicion}
+        crt={modalEdicion.mic}
+        accion="editar"
+        onGenerate={guardarCambiosMIC}
+        loading={loadingAction === modalEdicion.mic?.id}
+        modoEdicion={true}
+        datosIniciales={modalEdicion.mic}
+      />
     </div>
   );
 }
 
-// -------- Detalle --------
-function MICDetalles({ mic }) {
+// ✅ COMPONENTE MICDetalles ACTUALIZADO CON GESTIÓN DE ESTADO
+function MICDetalles({ mic, onEstadoCambiado }) {
   const campos = [
     { key: "campo_23_numero_campo2_crt", label: "Nº Carta de Porte", importante: true },
     { key: "campo_4_estado", label: "Estado", importante: true },
@@ -569,10 +1163,24 @@ function MICDetalles({ mic }) {
 
   return (
     <div className="mic-detalles">
+      {/* ✅ GESTOR DE ESTADO PROFESIONAL EN EL MODAL */}
+      <div className="mb-6">
+        <GestorEstadoMIC 
+          mic={mic} 
+          onEstadoCambiado={onEstadoCambiado}
+          compact={false}
+        />
+      </div>
+
       <div className="detalles-grid">
         {campos.map(({ key, label, importante, multilinea }) => {
           const valor = mic[key];
+          
+          // No mostrar el estado aquí ya que está en el gestor
+          if (key === "campo_4_estado") return null;
+          
           if (!valor) return null;
+          
           return (
             <div
               key={key}

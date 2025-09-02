@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { Search, Plus, Edit3, Trash2, Building2, Flag, AlertCircle, CheckCircle, Loader2 } from "lucide-react";
 
-// Configuración de la API
-const API_BASE_URL = "http://localhost:5000/api"; // Ajusta según tu configuración
+// Configuración de la API - Apuntando al backend Python
+const API_BASE_URL = "http://localhost:5000/api";
 
 // Componente Table mejorado para ciudades
 const EnhancedTable = ({ columns, data, onEdit, onDelete, loading }) => {
@@ -399,7 +399,7 @@ function Ciudades() {
       }
 
       const response = await fetch(`${API_BASE_URL}${url}`, config);
-      
+
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
         throw new Error(errorData.error || `Error ${response.status}: ${response.statusText}`);
@@ -416,7 +416,8 @@ function Ciudades() {
   const fetchPaises = useCallback(async () => {
     try {
       const response = await apiCall('/crts/data/paises');
-      setPaises(response.items || []);
+      const paisesData = response.items || response || [];
+      setPaises(Array.isArray(paisesData) ? paisesData : []);
     } catch (error) {
       console.error('Error fetching países:', error);
       showNotification('Error al cargar países: ' + error.message, 'error');
@@ -436,8 +437,10 @@ function Ciudades() {
     setIsLoading(true);
     try {
       const response = await apiCall('/crts/data/ciudades');
-      setCiudades(response.items || []);
-      showNotification(`${response.items?.length || 0} ciudades cargadas exitosamente`, 'success');
+      const ciudadesData = response.items || response || [];
+      const ciudadesArray = Array.isArray(ciudadesData) ? ciudadesData : [];
+      setCiudades(ciudadesArray);
+      showNotification(`${ciudadesArray.length} ciudades cargadas exitosamente`, 'success');
     } catch (error) {
       console.error('Error fetching ciudades:', error);
       showNotification('Error al cargar ciudades: ' + error.message, 'error');
@@ -490,7 +493,7 @@ function Ciudades() {
   const handleSubmit = async (data) => {
     try {
       const paisSelected = paises.find(p => p.id === data.pais_id);
-      
+
       if (editCiudad) {
         // Actualizar ciudad existente
         await apiCall(`/ciudades/${editCiudad.id}`, 'PUT', data);

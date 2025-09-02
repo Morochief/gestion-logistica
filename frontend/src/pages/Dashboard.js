@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import api from "../api/api"; // Asumiendo que tienes tu configuración de API
-import { 
-  Users, Globe, Building2, UserCheck, Truck, FileText, 
-  ArrowLeftRight, Coins, DollarSign, Activity, 
-  BarChart3, Settings, ChevronRight, Sparkles,
+import {
+  Users, Globe, Building2, UserCheck, Truck, FileText,
+  ArrowLeftRight, Coins, DollarSign,
+  BarChart3, ChevronRight, Sparkles,
   TrendingUp, Clock, Star
 } from "lucide-react";
+import DashboardCharts from "../components/charts/DashboardCharts";
 
 const modules = [
   { 
@@ -89,33 +90,6 @@ const modules = [
     bgColor: "bg-emerald-50",
     description: "Gestión de pagos",
     statsKey: "honorarios"
-  },
-  { 
-    name: "Movimientos", 
-    icon: <Activity className="w-8 h-8" />, 
-    path: "/movimientos",
-    color: "from-pink-500 to-rose-700",
-    bgColor: "bg-pink-50",
-    description: "Registro de actividad",
-    statsKey: "movimientos"
-  },
-  { 
-    name: "Reportes", 
-    icon: <BarChart3 className="w-8 h-8" />, 
-    path: "/reportes",
-    color: "from-violet-500 to-purple-700",
-    bgColor: "bg-violet-50",
-    description: "Análisis y reportes",
-    statsKey: "reportes"
-  },
-  { 
-    name: "Parámetros", 
-    icon: <Settings className="w-8 h-8" />, 
-    path: "/parametros",
-    color: "from-gray-500 to-slate-700",
-    bgColor: "bg-gray-50",
-    description: "Configuración del sistema",
-    statsKey: "parametros"
   },
 ];
 
@@ -216,7 +190,7 @@ const ModuleCard = ({ module, index, stats }) => {
             </p>
             <div className="flex items-center justify-between pt-2">
               <span className={`px-3 py-1 rounded-full text-xs font-medium ${module.bgColor} text-gray-700`}>
-                {moduleStats} {module.statsKey === 'honorarios' ? 'registros' : 
+                {moduleStats} {module.statsKey === 'honorarios' ? 'registros' :
                  module.statsKey === 'usuarios' ? 'usuarios' :
                  module.statsKey === 'paises' ? 'países' :
                  module.statsKey === 'ciudades' ? 'ciudades' :
@@ -253,9 +227,6 @@ function Dashboard() {
     mic: 0,
     monedas: 0,
     honorarios: 0,
-    movimientos: 0,
-    reportes: 0,
-    parametros: 0,
     totalHonorarios: 0,
     usuariosConectados: 0
   });
@@ -311,9 +282,6 @@ function Dashboard() {
         crt: crtsData.length,
         usuarios: 0, // No tienes endpoint de usuarios aún
         mic: 0, // No tienes endpoint de MIC aún
-        movimientos: 0, // No tienes endpoint de movimientos aún
-        reportes: 0, // No tienes endpoint de reportes aún
-        parametros: 0, // No tienes endpoint de parámetros aún
         totalHonorarios: totalHonorarios,
         usuariosConectados: 1 // Usuario actual conectado
       });
@@ -394,6 +362,17 @@ function Dashboard() {
             trend="+0%"
             color="from-purple-500 to-violet-700"
           />
+        </div>
+
+        {/* Gráficos Avanzados */}
+        <div className="mb-8">
+          <div className="flex items-center space-x-3 mb-8">
+            <div className="w-1 h-8 bg-gradient-to-b from-indigo-500 to-purple-600 rounded-full" />
+            <h3 className="text-2xl font-bold text-gray-900 dark:text-white">Análisis y Estadísticas</h3>
+            <BarChart3 className="w-6 h-6 text-indigo-500" />
+          </div>
+
+          <DashboardCharts />
         </div>
 
         {/* Módulos principales */}

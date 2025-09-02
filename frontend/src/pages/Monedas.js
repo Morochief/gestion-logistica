@@ -1,23 +1,6 @@
 import React, { useState, useEffect } from "react";
-// import axios from "axios"; // Simulado para el ejemplo
+import api from "../api/api";
 import { Search, Plus, Coins, DollarSign, Hash, Type, AlertCircle, CheckCircle, Edit3, Trash2 } from "lucide-react";
-
-// Simulación de axios para el ejemplo
-const axios = {
-  get: async (url) => {
-    // Simulando datos de ejemplo
-    return {
-      data: [
-        { id: 1, codigo: 'USD', nombre: 'Dólar Estadounidense', simbolo: '$' },
-        { id: 2, codigo: 'EUR', nombre: 'Euro', simbolo: '€' },
-        { id: 3, codigo: 'PYG', nombre: 'Guaraní Paraguayo', simbolo: '₲' },
-      ]
-    };
-  },
-  post: async (url, data) => ({ data: { id: Date.now(), ...data } }),
-  put: async (url, data) => ({ data }),
-  delete: async (url) => ({ data: { message: 'Deleted' } })
-};
 
 // Componente para mostrar monedas en cards
 const MonedaCard = ({ moneda, onEdit, onDelete }) => {
@@ -251,7 +234,7 @@ const Monedas = () => {
   const fetchMonedas = async () => {
     setIsLoading(true);
     try {
-      const res = await axios.get("http://localhost:5000/api/monedas/");
+      const res = await api.get("/monedas/");
       setMonedas(res.data);
       setMensaje("");
     } catch (error) {
@@ -264,10 +247,10 @@ const Monedas = () => {
   const handleSubmit = async (formData) => {
     try {
       if (editMoneda) {
-        await axios.put(`http://localhost:5000/api/monedas/${editMoneda.id}`, formData);
+        await api.put(`/monedas/${editMoneda.id}`, formData);
         setMensaje("Moneda actualizada correctamente");
       } else {
-        await axios.post("http://localhost:5000/api/monedas/", formData);
+        await api.post("/monedas/", formData);
         setMensaje("Moneda agregada correctamente");
       }
       setModalOpen(false);
@@ -286,7 +269,7 @@ const Monedas = () => {
   const handleDelete = async (id) => {
     if (window.confirm("¿Estás seguro de que deseas eliminar esta moneda?")) {
       try {
-        await axios.delete(`http://localhost:5000/api/monedas/${id}`);
+        await api.delete(`/monedas/${id}`);
         setMensaje("Moneda eliminada correctamente");
         fetchMonedas();
       } catch (error) {

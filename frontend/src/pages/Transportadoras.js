@@ -66,10 +66,12 @@ const EnhancedTable = ({ columns, data, onEdit, onDelete }) => {
                             <span className="font-medium">{item[column.field]}</span>
                           </div>
                         )}
-                        {column.field === 'codigo_interno' && (
+                        {column.field === 'honorario' && (
                           <div className="flex items-center space-x-2">
-                            <FileText className="w-4 h-4 text-gray-400" />
-                            <span className="font-mono text-sm">{item[column.field] || '-'}</span>
+                            <DollarSign className="w-4 h-4 text-green-500" />
+                            <span className="font-bold text-green-600">
+                              {item[column.field] ? `$${parseFloat(item[column.field]).toLocaleString('es-ES', { minimumFractionDigits: 2 })}` : '-'}
+                            </span>
                           </div>
                         )}
                         {column.field === 'nombre' && (
@@ -108,7 +110,7 @@ const EnhancedTable = ({ columns, data, onEdit, onDelete }) => {
                             <span className="font-mono text-sm">{item[column.field] || '-'}</span>
                           </div>
                         )}
-                        {!['codigo', 'codigo_interno', 'nombre', 'direccion', 'tipo_documento', 'numero_documento', 'telefono'].includes(column.field) && item[column.field]}
+                        {!['codigo', 'honorario', 'nombre', 'direccion', 'tipo_documento', 'numero_documento', 'telefono'].includes(column.field) && item[column.field]}
                       </>
                     )}
                   </td>
@@ -245,7 +247,7 @@ const EnhancedFormModal = ({ open, onClose, onSubmit, initialValues, fields, tit
                 
                 {/* Iconos contextuales */}
                 {field.name === 'codigo' && <FileText className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />}
-                {field.name === 'codigo_interno' && <FileText className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />}
+                {field.name === 'honorario' && <DollarSign className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-green-500" />}
                 {field.name === 'nombre' && <Truck className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />}
                 {field.name === 'direccion' && <MapPin className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />}
                 {field.name === 'ciudad_id' && <Building2 className="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />}
@@ -366,7 +368,7 @@ function Transportadoras() {
 
   const formFields = [
     { name: "codigo", label: "Código", required: true },
-    { name: "codigo_interno", label: "Código Interno", required: false },
+    { name: "honorario", label: "Honorario (USD)", type: "number", step: "0.01", placeholder: "0.00", required: false },
     { name: "nombre", label: "Nombre", required: true },
     { name: "direccion", label: "Dirección", required: false },
     {
@@ -562,7 +564,7 @@ function Transportadoras() {
           <EnhancedTable
             columns={[
               { field: "codigo", label: "Código" },
-              { field: "codigo_interno", label: "Código Interno" },
+              { field: "honorario", label: "Honorario" },
               { field: "nombre", label: "Nombre" },
               { field: "direccion", label: "Dirección" },
               {

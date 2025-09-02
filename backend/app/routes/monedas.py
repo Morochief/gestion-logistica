@@ -1,12 +1,15 @@
 from flask import Blueprint, request, jsonify
 from app.models import Moneda
-from app import db
+from app import db, cache
 from sqlalchemy.exc import IntegrityError
 
 monedas_bp = Blueprint('monedas', __name__, url_prefix='/api/monedas')
 
 # Listar monedas
+
+
 @monedas_bp.route('/', methods=['GET'])
+@cache.cached(timeout=600)  # Cache por 10 minutos
 def listar_monedas():
     monedas = Moneda.query.order_by(Moneda.nombre).all()
     return jsonify([
@@ -20,6 +23,8 @@ def listar_monedas():
     ])
 
 # Crear moneda
+
+
 @monedas_bp.route('/', methods=['POST'])
 def crear_moneda():
     data = request.json
@@ -39,6 +44,8 @@ def crear_moneda():
         return jsonify({"error": "Código de moneda duplicado"}), 409
 
 # Modificar moneda
+
+
 @monedas_bp.route('/<int:id>', methods=['PUT'])
 def modificar_moneda(id):
     moneda = Moneda.query.get_or_404(id)
@@ -50,6 +57,8 @@ def modificar_moneda(id):
     return jsonify({"message": "Moneda modificada"})
 
 # Eliminar moneda
+
+
 @monedas_bp.route('/<int:id>', methods=['DELETE'])
 def eliminar_moneda(id):
     moneda = Moneda.query.get_or_404(id)

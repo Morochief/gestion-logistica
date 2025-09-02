@@ -1,5 +1,15 @@
+import { Navigate, useLocation } from "react-router-dom";
+import { isLoggedIn } from "../utils/auth";
+
 function PrivateRoute({ children }) {
-  // 🚀 Ahora siempre permite el acceso sin verificar login
+  const location = useLocation();
+
+  // Verificar si el usuario está autenticado
+  if (!isLoggedIn()) {
+    // Redirigir al login, guardando la ubicación actual para redirigir después
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
   return children;
 }
 

@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import api from "../api/api";
 import Select from "react-select";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 function hoyISO() {
   const d = new Date();
@@ -25,6 +25,11 @@ const INCOTERMS = [
 ];
 
 function CRT() {
+  const { crtId } = useParams(); // Para detectar si venimos con ID de edición
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingCrtId, setEditingCrtId] = useState(null);
+  const [loadingEdit, setLoadingEdit] = useState(false);
+
   const [remitentes, setRemitentes] = useState([]);
   const [transportadoras, setTransportadoras] = useState([]);
   const [ciudades, setCiudades] = useState([]);
@@ -35,6 +40,12 @@ function CRT() {
   const [monedaGasto, setMonedaGasto] = useState(null);
   const [selectedTransportadora, setSelectedTransportadora] = useState(null);
   const [monedaTouched, setMonedaTouched] = useState(false);
+  const [firmaRemitente, setFirmaRemitente] = useState(null);
+  const [firmaTransportador, setFirmaTransportador] = useState(null);
+  const [firmaDestinatario, setFirmaDestinatario] = useState(null);
+  const [showMicModal, setShowMicModal] = useState(false);
+  const [crtEmitido, setCrtEmitido] = useState(null);
+  const textareaRef = useRef(null);
   const navigate = useNavigate();
 
   const optCiudadPais = (ciudades, paises) =>
@@ -142,8 +153,152 @@ function CRT() {
     api.get("/monedas/").then((r) => setMonedas(r.data));
   }, []);
 
+  // Función para cargar datos del CRT para editar
+  const cargarDatosParaEditar = useCallback(async (id) => {
+    setLoadingEdit(true);
+    try {
+      console.log(`🔄 Cargando CRT ${id} para editar...`);
+
+      // Cargar datos del CRT
+      const response = await api.get(`/crts/${id}`);
+      const crtData = response.data;
+
+      // Cargar campo 15 si existe
+      let campo15Data = [];
+      try {
+        const campo15Response = await api.get(`/crts/${id}/campo15`);
+        campo15Data = campo15Response.data.items || [];
+      } catch (error) {
+        console.log("⚠️ Campo 15 no disponible:", error.message);
+      }
+
+      // Función auxiliar para formatear números
+      const formatNumber = (value, decimals = 2) => {
+        if (!value || value === "") return "";
+        const num = parseFloat(value);
+        if (isNaN(num)) return value;
+        return num.toFixed(decimals).replace(".", ",");
+      };
+
+      // Función auxiliar para formatear pesos (3 decimales)
+      const formatWeight = (value) => {
+        if (!value || value === "") return "";
+        const num = parseFloat(value);
+        if (isNaN(num)) return value;
+        return num.toFixed(3).replace(".", ",");
+      };
+
+      // Función auxiliar para formatear volumen (5 decimales)
+      const formatVolume = (value) => {
+        if (!value || value === "") return "";
+        const num = parseFloat(value);
+        if (isNaN(num)) return value;
+        return num.toFixed(5).replace(".", ",");
+      };
+
+      // Llenar el formulario con los datos del CRT formateados correctamente
+      setForm({
+        numero_crt: crtData.numero_crt || "",
+        fecha_emision: crtData.fecha_emision || hoyISO(),
+        estado: crtData.estado || "EMITIDO",
+        remitente_id: crtData.remitente_id || null,
+        destinatario_id: crtData.destinatario_id || null,
+        consignatario_id: crtData.consignatario_id || null,
+        notificar_a_id: crtData.notificar_a_id || null,
+        transportadora_id: crtData.transportadora_id || null,
+        ciudad_emision_id: crtData.ciudad_emision_id || null,
+        pais_emision_id: crtData.pais_emision_id || null,
+        lugar_entrega: crtData.lugar_entrega || "",
+        fecha_entrega: crtData.fecha_entrega || "",
+        detalles_mercaderia: crtData.detalles_mercaderia || "",
+        peso_bruto: formatWeight(crtData.peso_bruto),
+        peso_neto: formatWeight(crtData.peso_neto),
+        volumen: formatVolume(crtData.volumen),
+        incoterm: crtData.incoterm || "",
+        moneda_id: crtData.moneda_id || null,
+        valor_incoterm: formatNumber(crtData.valor_incoterm, 2),
+        valor_mercaderia: formatNumber(crtData.valor_mercaderia, 2),
+        declaracion_mercaderia: formatNumber(crtData.declaracion_mercaderia, 2),
+        valor_flete_externo: formatNumber(crtData.valor_flete_externo, 2),
+        valor_reembolso: formatNumber(crtData.valor_reembolso, 2),
+        factura_exportacion: crtData.factura_exportacion || "",
+        nro_despacho: crtData.nro_despacho || "",
+        transporte_sucesivos: crtData.transporte_sucesivos || "",
+        observaciones: crtData.observaciones || "",
+        formalidades_aduana: crtData.formalidades_aduana || "",
+        fecha_firma: crtData.fecha_firma || "",
+        gastos: campo15Data,
+        local_responsabilidad: "",
+      });
+
+      // Configurar transportadora seleccionada
+      if (crtData.transportadora_id && transportadoras.length > 0) {
+        const transportadora = transportadoras.find(t => t.id === crtData.transportadora_id);
+        if (transportadora) {
+          setSelectedTransportadora({
+            value: transportadora.id,
+            label: transportadora.nombre,
+            codigo: transportadora.codigo
+          });
+        }
+      }
+
+      // Configurar moneda
+      if (crtData.moneda_id && monedas.length > 0) {
+        const moneda = monedas.find(m => m.id === crtData.moneda_id);
+        if (moneda) {
+          setMonedaGasto({
+            value: moneda.id,
+            label: `${moneda.codigo} - ${moneda.nombre}`
+          });
+        }
+      }
+
+      // Configurar firmas si los datos están disponibles
+      if (remitentes.length > 0) {
+        if (crtData.remitente_id) {
+          const remitente = remitentes.find(r => r.id === crtData.remitente_id);
+          if (remitente && !firmaRemitente) {
+            setFirmaRemitente({ value: remitente.id, label: remitente.nombre });
+          }
+        }
+
+        if (crtData.destinatario_id) {
+          const destinatario = remitentes.find(r => r.id === crtData.destinatario_id);
+          if (destinatario && !firmaDestinatario) {
+            setFirmaDestinatario({ value: destinatario.id, label: destinatario.nombre });
+          }
+        }
+      }
+
+      if (crtData.transportadora_id && transportadoras.length > 0 && !firmaTransportador) {
+        const transportadora = transportadoras.find(t => t.id === crtData.transportadora_id);
+        if (transportadora) {
+          setFirmaTransportador({ value: transportadora.id, label: transportadora.nombre });
+        }
+      }
+
+      console.log(`✅ CRT ${id} cargado para editar`);
+    } catch (error) {
+      console.error("❌ Error cargando CRT para editar:", error);
+      alert("Error al cargar los datos del CRT para editar");
+      navigate("/listar-crt");
+    } finally {
+      setLoadingEdit(false);
+    }
+  }, [transportadoras, monedas, remitentes, navigate]);
+
+  // Detectar si venimos para editar un CRT
   useEffect(() => {
-    if (ciudades.length && paises.length) {
+    if (crtId && transportadoras.length > 0 && monedas.length > 0 && remitentes.length > 0) {
+      setIsEditing(true);
+      setEditingCrtId(crtId);
+      cargarDatosParaEditar(crtId);
+    }
+  }, [crtId, transportadoras, monedas, remitentes, cargarDatosParaEditar]);
+
+  useEffect(() => {
+    if (ciudades.length > 0 && paises.length > 0) {
       const def = getDefaultLugarEmision(ciudades, paises);
       if (def) {
         setForm((f) => ({
@@ -158,9 +313,9 @@ function CRT() {
   useEffect(() => {
     if (
       form.remitente_id &&
-      remitentes.length &&
-      ciudades.length &&
-      paises.length
+      remitentes.length > 0 &&
+      ciudades.length > 0 &&
+      paises.length > 0
     ) {
       const remitente = remitentes.find((r) => r.id === form.remitente_id);
       if (remitente && remitente.ciudad_id) {
@@ -194,9 +349,9 @@ function CRT() {
   useEffect(() => {
     if (
       form.destinatario_id &&
-      remitentes.length &&
-      ciudades.length &&
-      paises.length
+      remitentes.length > 0 &&
+      ciudades.length > 0 &&
+      paises.length > 0
     ) {
       const destinatario = remitentes.find(
         (r) => r.id === form.destinatario_id
@@ -221,6 +376,34 @@ function CRT() {
       }
     }
   }, [form.destinatario_id, remitentes, ciudades, paises]);
+
+  // Auto-poblar firmas cuando se seleccionan entidades
+  useEffect(() => {
+    if (form.remitente_id && remitentes.length > 0 && !firmaRemitente) {
+      const remitente = remitentes.find((r) => r.id === form.remitente_id);
+      if (remitente) {
+        setFirmaRemitente({ value: remitente.id, label: remitente.nombre });
+      }
+    }
+  }, [form.remitente_id, remitentes, firmaRemitente]);
+
+  useEffect(() => {
+    if (form.transportadora_id && transportadoras.length > 0 && !firmaTransportador) {
+      const transportadora = transportadoras.find((t) => t.id === form.transportadora_id);
+      if (transportadora) {
+        setFirmaTransportador({ value: transportadora.id, label: transportadora.nombre });
+      }
+    }
+  }, [form.transportadora_id, transportadoras, firmaTransportador]);
+
+  useEffect(() => {
+    if (form.destinatario_id && remitentes.length > 0 && !firmaDestinatario) {
+      const destinatario = remitentes.find((r) => r.id === form.destinatario_id);
+      if (destinatario) {
+        setFirmaDestinatario({ value: destinatario.id, label: destinatario.nombre });
+      }
+    }
+  }, [form.destinatario_id, remitentes, firmaDestinatario]);
 
   const handleValorGastoInput = (e, campo) => {
     let v = e.target.value
@@ -415,6 +598,24 @@ function CRT() {
   const handleCiudad7 = (option) => setCiudad7(option);
   const handleFecha7 = (e) => setFecha7(e.target.value);
 
+  // Función para auto-resize del textarea
+  const autoResizeTextarea = () => {
+    if (textareaRef.current) {
+      // Pequeño retraso para asegurar que el DOM se actualice
+      setTimeout(() => {
+        if (textareaRef.current) {
+          textareaRef.current.style.height = 'auto';
+          textareaRef.current.style.height = textareaRef.current.scrollHeight + 'px';
+        }
+      }, 0);
+    }
+  };
+
+  // Auto-resize cuando cambia el contenido
+  useEffect(() => {
+    autoResizeTextarea();
+  }, [form.detalles_mercaderia]);
+
   const handleLugarEntregaSelect = (option) => {
     setForm((f) => ({
       ...f,
@@ -422,33 +623,121 @@ function CRT() {
     }));
   };
 
+
   const monedaObligatoria = !monedaGasto || !monedaGasto.value;
   const handleSubmit = async (e) => {
     e.preventDefault();
     setMonedaTouched(true);
+
+    // Validar que se haya seleccionado un remitente
+    if (!form.remitente_id) {
+      alert("Debe seleccionar un remitente antes de guardar el CRT.");
+      return;
+    }
+
+    // Validar que se haya seleccionado un destinatario
+    if (!form.destinatario_id) {
+      alert("Debe seleccionar un destinatario antes de guardar el CRT.");
+      return;
+    }
+
+    // Validar que se haya seleccionado una transportadora
+    if (!form.transportadora_id) {
+      alert("Debe seleccionar una transportadora antes de guardar el CRT.");
+      return;
+    }
+
     if (monedaObligatoria) return;
+
     try {
-      await api.post("/crts/", {
+      const dataToSend = {
         ...form,
         gastos: form.gastos.map((g) => ({
           ...g,
           moneda: monedaCodigo,
         })),
         moneda_id: monedaGasto ? monedaGasto.value : null,
-      });
-      alert("CRT emitido correctamente");
-      setForm((f) => ({ ...f, gastos: [] }));
-      setMonedaTouched(false);
+        firma_remitente: firmaRemitente ? firmaRemitente.label : "",
+        firma_transportador: firmaTransportador ? firmaTransportador.label : "",
+        firma_destinatario: firmaDestinatario ? firmaDestinatario.label : "",
+      };
+
+      if (isEditing && editingCrtId) {
+        // Actualizar CRT existente
+        await api.put(`/crts/${editingCrtId}`, dataToSend);
+        alert("CRT actualizado correctamente");
+        navigate("/listar-crt");
+      } else {
+        // Crear nuevo CRT
+        const response = await api.post("/crts/", dataToSend);
+        setCrtEmitido(response.data);
+        setShowMicModal(true);
+        setForm((f) => ({ ...f, gastos: [] }));
+        setMonedaTouched(false);
+      }
     } catch (e) {
-      alert("Error al emitir CRT: " + (e.response?.data?.error || e.message));
+      alert("Error al guardar CRT: " + (e.response?.data?.error || e.message));
     }
   };
+
+  // Función para crear MIC con datos del CRT
+  const handleCrearMicDesdeCrt = async () => {
+    if (!crtEmitido?.id) {
+      alert("No se pudo obtener el ID del CRT emitido.");
+      return;
+    }
+
+    try {
+      // Obtener datos del CRT para pre-cargar el MIC
+      const resp = await api.get(`/mic/get_crt_data/${crtEmitido.id}`);
+      if (resp.data.success) {
+        // Cerrar modal y navegar a MIC con datos pre-cargados
+        setShowMicModal(false);
+        navigate("/mic/nuevo", { state: resp.data.datos });
+      } else {
+        alert("Error obteniendo datos del CRT: " + resp.data.mensaje);
+      }
+    } catch (err) {
+      alert(
+        "Error al obtener datos del CRT: " +
+          (err.response?.data?.error || err.message)
+      );
+    }
+  };
+
+  // Función para crear MIC nuevo
+  const handleCrearMicNuevo = () => {
+    setShowMicModal(false);
+    navigate("/mic/nuevo");
+  };
+
+  // Función para cerrar modal sin crear MIC
+  const handleCerrarModal = () => {
+    setShowMicModal(false);
+    setCrtEmitido(null);
+  };
+
+  // Mostrar loading mientras se cargan datos para editar
+  if (loadingEdit) {
+    return (
+      <div className="bg-slate-50 min-h-screen py-4">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex justify-center items-center py-20">
+            <div className="text-center">
+              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+              <p className="text-lg text-gray-600">Cargando datos del CRT para editar...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-slate-50 min-h-screen py-4">
       <div className="max-w-7xl mx-auto">
         <h2 className="text-3xl font-bold mb-4 text-center text-indigo-700">
-          SALIDA DE CARGAMENTO
+          {isEditing ? `EDITAR CRT - ${form.numero_crt || 'Cargando...'}` : 'SALIDA DE CARGAMENTO'}
         </h2>
         <form
           onSubmit={handleSubmit}
@@ -458,11 +747,11 @@ function CRT() {
             <div className="md:col-span-2 flex flex-col gap-2">
               <label className="block">
                 <span className="font-bold text-xs text-blue-900">
-                  1. Nome e endereço do remetente
+                  1. Nome e endereço do remetente <span className="text-red-500">*</span>
                 </span>
                 <br />
                 <span className="font-bold text-xs text-blue-700">
-                  Nombre y domicilio del remitente
+                  Nombre y domicilio del remitente <span className="text-red-500">*</span>
                 </span>
                 <Select
                   options={opt(remitentes)}
@@ -478,11 +767,11 @@ function CRT() {
               </label>
               <label className="block">
                 <span className="font-bold text-xs text-blue-900">
-                  4. Nome e endereço do destinatário
+                  4. Nome e endereço do destinatário <span className="text-red-500">*</span>
                 </span>
                 <br />
                 <span className="font-bold text-xs text-blue-700">
-                  Nombre y domicilio del destinatario
+                  Nombre y domicilio del destinatario <span className="text-red-500">*</span>
                 </span>
                 <Select
                   options={opt(remitentes)}
@@ -547,12 +836,18 @@ function CRT() {
                   mercancías, contenedores y accesorios
                 </span>
                 <textarea
+                  ref={textareaRef}
                   name="detalles_mercaderia"
                   value={form.detalles_mercaderia}
                   onChange={handleInput}
-                  className="block w-full rounded border px-2 py-1"
-                  rows={7}
-                  style={{ minHeight: "110px" }}
+                  onInput={autoResizeTextarea}
+                  className="block w-full rounded border px-2 py-1 resize-none overflow-hidden"
+                  rows={1}
+                  style={{
+                    minHeight: "110px",
+                    maxHeight: "400px"
+                  }}
+                  placeholder="Ingrese los detalles de la mercadería..."
                 />
               </label>
             </div>
@@ -573,11 +868,11 @@ function CRT() {
               </label>
               <label className="block">
                 <span className="font-bold text-xs text-blue-900">
-                  3. Nome e endereço do transportador
+                  3. Nome e endereço do transportador <span className="text-red-500">*</span>
                 </span>
                 <br />
                 <span className="font-bold text-xs text-blue-700">
-                  Nombre y domicilio del porteador
+                  Nombre y domicilio del porteador <span className="text-red-500">*</span>
                 </span>
                 <Select
                   options={opt(transportadoras)}
@@ -782,7 +1077,7 @@ function CRT() {
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-blue-800">
-                    Seleccione la moneda:
+                    Seleccione la moneda: <span className="text-red-500">*</span>
                   </label>
                   <Select
                     options={opt(monedas)}
@@ -1038,14 +1333,14 @@ function CRT() {
                 <div className="font-bold text-xs text-blue-900">
                   21. Nombre y firma del remitente
                 </div>
-                <div className="text-sm font-semibold">
-                  {form.remitente_id ? (
-                    remitentes.find((r) => r.id === form.remitente_id)
-                      ?.nombre || "Seleccione remitente"
-                  ) : (
-                    <span className="italic text-gray-400">Sin remitente</span>
-                  )}
-                </div>
+                <Select
+                  options={opt(remitentes)}
+                  value={firmaRemitente}
+                  onChange={setFirmaRemitente}
+                  placeholder="Seleccionar firma del remitente"
+                  isClearable
+                  className="mt-1"
+                />
                 <div className="text-xs text-gray-500 mt-1">
                   Fecha: {fecha7 ? formatoFecha(fecha7) : "--/--/----"}
                 </div>
@@ -1054,16 +1349,14 @@ function CRT() {
                 <div className="font-bold text-xs text-blue-900">
                   23. Nombre y firma del transportador
                 </div>
-                <div className="text-sm font-semibold">
-                  {form.transportadora_id ? (
-                    transportadoras.find((t) => t.id === form.transportadora_id)
-                      ?.nombre || "Seleccione transportadora"
-                  ) : (
-                    <span className="italic text-gray-400">
-                      Sin transportadora
-                    </span>
-                  )}
-                </div>
+                <Select
+                  options={opt(transportadoras)}
+                  value={firmaTransportador}
+                  onChange={setFirmaTransportador}
+                  placeholder="Seleccionar firma del transportador"
+                  isClearable
+                  className="mt-1"
+                />
                 <div className="text-xs text-gray-500 mt-1">
                   Fecha: {fecha7 ? formatoFecha(fecha7) : "--/--/----"}
                 </div>
@@ -1090,63 +1383,98 @@ function CRT() {
                 <div className="font-bold text-xs text-blue-900">
                   24. Nombre y firma del destinatario
                 </div>
-                <div className="text-sm font-semibold">
-                  {form.destinatario_id ? (
-                    remitentes.find((r) => r.id === form.destinatario_id)
-                      ?.nombre || "Seleccione destinatario"
-                  ) : (
-                    <span className="italic text-gray-400">
-                      Sin destinatario
-                    </span>
-                  )}
-                </div>
+                <Select
+                  options={opt(remitentes)}
+                  value={firmaDestinatario}
+                  onChange={setFirmaDestinatario}
+                  placeholder="Seleccionar firma del destinatario"
+                  isClearable
+                  className="mt-1"
+                />
                 <div className="text-xs text-gray-500 mt-1">
                   Fecha: {fecha7 ? formatoFecha(fecha7) : "--/--/----"}
                 </div>
               </div>
             </div>
           </div>
+          <div className="text-xs text-gray-600 mb-4 text-center">
+            <span className="text-red-500">*</span> Campos obligatorios
+          </div>
           <div className="flex flex-col md:flex-row gap-4 justify-end mt-8">
+            {isEditing && (
+              <button
+                type="button"
+                onClick={() => navigate('/listar-crt')}
+                className="bg-gray-500 hover:bg-gray-600 text-white font-bold py-3 px-10 rounded-xl shadow-lg transition"
+              >
+                ← Volver a Lista
+              </button>
+            )}
             <button
               type="submit"
-              className="bg-indigo-700 hover:bg-indigo-800 text-white font-bold py-3 px-10 rounded-xl shadow-lg transition"
+              disabled={loadingEdit}
+              className="bg-indigo-700 hover:bg-indigo-800 text-white font-bold py-3 px-10 rounded-xl shadow-lg transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Emitir CRT
-            </button>
-            <button
-              type="button"
-              onClick={async () => {
-                if (!form.numero_crt) {
-                  alert("Primero debes emitir el CRT antes de generar el MIC.");
-                  return;
-                }
-                try {
-                  const crtEmitido = await api.get(
-                    `/crts/by_numero/${form.numero_crt}`
-                  );
-                  const crt_id = crtEmitido.data?.id;
-                  if (!crt_id) {
-                    alert("No se pudo obtener el ID del CRT emitido.");
-                    return;
-                  }
-                  // Prellenar datos de MIC desde CRT y redirigir automáticamente
-                  const resp = await api.post(`/mic/from_crt/${crt_id}`);
-                  // Redirigir a /mic/nuevo con los datos prellenados
-                  navigate("/mic/nuevo", { state: resp.data });
-                } catch (err) {
-                  alert(
-                    "Error al generar el MIC: " +
-                      (err.response?.data?.error || err.message)
-                  );
-                }
-              }}
-              className="bg-green-700 hover:bg-green-800 text-white font-bold py-3 px-10 rounded-xl shadow-lg transition"
-            >
-              Emitir MIC
+              {loadingEdit ? 'Cargando...' : (isEditing ? 'Actualizar CRT' : 'Emitir CRT')}
             </button>
           </div>
         </form>
       </div>
+
+      {/* Modal de confirmación para crear MIC */}
+      {showMicModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="mb-4">
+                <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                  <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  ¡CRT Emitido Exitosamente!
+                </h3>
+                <p className="text-sm text-gray-600 mb-4">
+                  Número de CRT: <span className="font-bold text-indigo-600">{crtEmitido?.numero_crt}</span>
+                </p>
+                <p className="text-sm text-gray-700 mb-6">
+                  ¿Desea crear un Manifiesto de Carga (MIC) con los datos de este CRT?
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={handleCrearMicDesdeCrt}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-medium py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                  </svg>
+                  Crear MIC con datos del CRT
+                </button>
+
+                <button
+                  onClick={handleCrearMicNuevo}
+                  className="w-full bg-gray-600 hover:bg-gray-700 text-white font-medium py-3 px-4 rounded-lg transition duration-200 flex items-center justify-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                  </svg>
+                  Crear MIC nuevo
+                </button>
+
+                <button
+                  onClick={handleCerrarModal}
+                  className="w-full bg-gray-300 hover:bg-gray-400 text-gray-800 font-medium py-2 px-4 rounded-lg transition duration-200 text-sm"
+                >
+                  Continuar sin crear MIC
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -628,37 +628,16 @@ function ListarCRT() {
     }
   };
 
-  // MEJORADA: Cargar CRT para editar con campo 15
+  // MODIFICADA: Navegar a página CRT completa para editar
   const editarCRT = async (crtId) => {
     try {
-      console.log(`🔄 Cargando CRT ${crtId} para editar...`);
+      console.log(`🔄 Navegando a CRT ${crtId} para editar...`);
 
-      const response = await axios.get(
-        `http://localhost:5000/api/crts/${crtId}`
-      );
-      const crtData = response.data;
-      setCrtEditando(crtData);
-
-      // CARGAR CAMPO 15 MEJORADO
-      try {
-        const campo15Response = await axios.get(
-          `http://localhost:5000/api/crts/${crtId}/campo15`
-        );
-        const items = campo15Response.data.items || [];
-        console.log(`✅ Campo 15 cargado: ${items.length} items`);
-        setCampo15Items(items);
-      } catch (error) {
-        console.log(
-          "⚠️ Error cargando campo 15, iniciando vacío:",
-          error.message
-        );
-        setCampo15Items([]);
-      }
-
-      setModalEditar(true);
+      // Navegar a la página CRT con parámetro de edición
+      navigate(`/crt/edit/${crtId}`);
     } catch (error) {
-      console.error("❌ Error obteniendo CRT para editar:", error);
-      toast.error("❌ Error obteniendo CRT para editar");
+      console.error("❌ Error navegando a edición:", error);
+      toast.error("❌ Error al abrir edición");
     }
   };
 

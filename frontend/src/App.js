@@ -1,50 +1,66 @@
-import React from "react";
+import React, { useEffect, lazy, Suspense } from "react";
 import {
   BrowserRouter as Router,
   Routes,
   Route,
   Navigate,
 } from "react-router-dom";
-
-import Login from "./pages/Login";
-import Dashboard from "./pages/Dashboard";
-import Usuarios from "./pages/Usuarios";
-import Paises from "./pages/Paises";
-import Ciudades from "./pages/Ciudades";
-import Remitentes from "./pages/Remitentes";
-import Transportadoras from "./pages/Transportadoras";
-import Monedas from "./pages/Monedas";
-import Honorarios from "./pages/Honorarios";
-import Movimientos from "./pages/Movimientos";
-import Reportes from "./pages/Reportes";
-import Parametros from "./pages/Parametros";
-import CRT from "./pages/CRT";
-import ListarCRT from "./pages/ListarCRT";
-
-import MICNuevo from "./pages/MICNuevo";
-import MICDetalle from "./pages/MICDetalle";
-// ❌ Eliminado: import ListarMIC from "./pages/ListarMIC";
-import MICsGuardados from "./pages/MICsGuardados";
-
+import { ThemeProvider } from "./contexts/ThemeContext";
 import PrivateRoute from "./components/PrivateRoute";
 import Layout from "./components/Layout";
+import { initializeAuth } from "./utils/auth";
+
+// Lazy loading de componentes
+const Login = lazy(() => import("./pages/Login"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Usuarios = lazy(() => import("./pages/Usuarios"));
+const Paises = lazy(() => import("./pages/Paises"));
+const Ciudades = lazy(() => import("./pages/Ciudades"));
+const Remitentes = lazy(() => import("./pages/Remitentes"));
+const Transportadoras = lazy(() => import("./pages/Transportadoras"));
+const Monedas = lazy(() => import("./pages/Monedas"));
+const Honorarios = lazy(() => import("./pages/Honorarios"));
+const CRT = lazy(() => import("./pages/CRT"));
+const ListarCRT = lazy(() => import("./pages/ListarCRT"));
+const MICNuevo = lazy(() => import("./pages/MICNuevo"));
+const MICDetalle = lazy(() => import("./pages/MICDetalle"));
+const MICsGuardados = lazy(() => import("./pages/MICsGuardados"));
+
+// Componentes importados con lazy loading arriba
 
 function App() {
-  return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={<Login />} />
+  // Inicializar autenticación al cargar la aplicación
+  useEffect(() => {
+    initializeAuth();
+  }, []);
 
-        <Route
-          path="/"
-          element={
-            <PrivateRoute>
-              <Layout>
-                <Dashboard />
-              </Layout>
-            </PrivateRoute>
-          }
-        />
+  // Componente de loading
+  const LoadingSpinner = () => (
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-900">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+        <p className="text-gray-600 dark:text-gray-400">Cargando...</p>
+      </div>
+    </div>
+  );
+
+  return (
+    <ThemeProvider>
+      <Router>
+        <Suspense fallback={<LoadingSpinner />}>
+          <Routes>
+            <Route path="/login" element={<Login />} />
+
+            <Route
+              path="/"
+              element={
+                <PrivateRoute>
+                  <Layout>
+                    <Dashboard />
+                  </Layout>
+                </PrivateRoute>
+              }
+            />
 
         <Route
           path="/usuarios"
@@ -117,37 +133,17 @@ function App() {
           }
         />
         <Route
-          path="/movimientos"
-          element={
-            <PrivateRoute>
-              <Layout>
-                <Movimientos />
-              </Layout>
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/reportes"
-          element={
-            <PrivateRoute>
-              <Layout>
-                <Reportes />
-              </Layout>
-            </PrivateRoute>
-          }
-        />
-        <Route
-          path="/parametros"
-          element={
-            <PrivateRoute>
-              <Layout>
-                <Parametros />
-              </Layout>
-            </PrivateRoute>
-          }
-        />
-        <Route
           path="/crt"
+          element={
+            <PrivateRoute>
+              <Layout>
+                <CRT />
+              </Layout>
+            </PrivateRoute>
+          }
+        />
+        <Route
+          path="/crt/edit/:crtId"
           element={
             <PrivateRoute>
               <Layout>
@@ -224,8 +220,10 @@ function App() {
         />
 
         <Route path="*" element={<Navigate to="/" />} />
-      </Routes>
-    </Router>
+          </Routes>
+        </Suspense>
+      </Router>
+    </ThemeProvider>
   );
 }
 

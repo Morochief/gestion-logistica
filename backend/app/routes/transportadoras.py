@@ -2,9 +2,12 @@ from flask import Blueprint, request, jsonify
 from app.models import Transportadora, Ciudad
 from app import db
 
-transportadoras_bp = Blueprint('transportadoras', __name__, url_prefix='/api/transportadoras')
+transportadoras_bp = Blueprint(
+    'transportadoras', __name__, url_prefix='/api/transportadoras')
 
 # Listar transportadoras (paginado y búsqueda opcional, honorarios relacionados)
+
+
 @transportadoras_bp.route('/', methods=['GET'])
 def listar_transportadoras():
     page = request.args.get('page', 1, type=int)
@@ -17,17 +20,17 @@ def listar_transportadoras():
             db.or_(
                 Transportadora.nombre.ilike(search),
                 Transportadora.codigo.ilike(search),
-                Transportadora.codigo_interno.ilike(search),
                 Transportadora.direccion.ilike(search)
             )
         )
-    transportadoras = query.order_by(Transportadora.id.desc()).paginate(page=page, per_page=per_page)
+    transportadoras = query.order_by(
+        Transportadora.id.desc()).paginate(page=page, per_page=per_page)
     return jsonify({
         "items": [
             {
                 "id": t.id,
                 "codigo": t.codigo,
-                "codigo_interno": t.codigo_interno,
+                "honorario": float(t.honorario) if t.honorario else 0,
                 "nombre": t.nombre,
                 "direccion": t.direccion,
                 "ciudad_id": t.ciudad_id,
@@ -41,7 +44,8 @@ def listar_transportadoras():
                         "descripcion": h.descripcion,
                         "monto": float(h.monto),
                         "fecha": h.fecha.isoformat() if h.fecha else None,
-                        "moneda_id": getattr(h, "moneda_id", None)  # Si existe el campo en tu modelo
+                        # Si existe el campo en tu modelo
+                        "moneda_id": getattr(h, "moneda_id", None)
                     } for h in t.honorarios_registrados
                 ]
             }
@@ -53,6 +57,8 @@ def listar_transportadoras():
     })
 
 # Crear transportadora
+
+
 @transportadoras_bp.route('/', methods=['POST'])
 def crear_transportadora():
     data = request.json
@@ -63,7 +69,7 @@ def crear_transportadora():
         return jsonify({"error": "Ciudad no encontrada"}), 404
     transportadora = Transportadora(
         codigo=data['codigo'],
-        codigo_interno=data.get('codigo_interno'),
+        honorario=data.get('honorario', 0),
         nombre=data['nombre'],
         direccion=data.get('direccion'),
         ciudad_id=data['ciudad_id'],
@@ -77,12 +83,14 @@ def crear_transportadora():
     return jsonify({"message": "Transportadora creada", "id": transportadora.id}), 201
 
 # Modificar transportadora
+
+
 @transportadoras_bp.route('/<int:id>', methods=['PUT'])
 def modificar_transportadora(id):
     transportadora = Transportadora.query.get_or_404(id)
     data = request.json
     transportadora.codigo = data.get('codigo', transportadora.codigo)
-    transportadora.codigo_interno = data.get('codigo_interno', transportadora.codigo_interno)
+    transportadora.honorario = data.get('honorario', transportadora.honorario)
     transportadora.nombre = data.get('nombre', transportadora.nombre)
     transportadora.direccion = data.get('direccion', transportadora.direccion)
     if data.get('ciudad_id'):
@@ -90,13 +98,17 @@ def modificar_transportadora(id):
         if not ciudad:
             return jsonify({"error": "Ciudad no encontrada"}), 404
         transportadora.ciudad_id = data['ciudad_id']
-    transportadora.tipo_documento = data.get('tipo_documento', transportadora.tipo_documento)
-    transportadora.numero_documento = data.get('numero_documento', transportadora.numero_documento)
+    transportadora.tipo_documento = data.get(
+        'tipo_documento', transportadora.tipo_documento)
+    transportadora.numero_documento = data.get(
+        'numero_documento', transportadora.numero_documento)
     transportadora.telefono = data.get('telefono', transportadora.telefono)
     db.session.commit()
     return jsonify({"message": "Transportadora modificada"})
 
 # Eliminar transportadora
+
+
 @transportadoras_bp.route('/<int:id>', methods=['DELETE'])
 def eliminar_transportadora(id):
     transportadora = Transportadora.query.get_or_404(id)

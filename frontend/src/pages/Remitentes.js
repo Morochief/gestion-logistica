@@ -360,16 +360,6 @@ function Remitentes() {
   const [currentSearch, setCurrentSearch] = useState("");
 
   const formFields = [
-    ...(editRemitente
-      ? [
-          {
-            name: "codigo",
-            label: "Código",
-            readOnly: true,
-            type: "text",
-          },
-        ]
-      : []),
     {
       name: "tipo_documento",
       label: "Tipo de Documento",

@@ -1,6 +1,9 @@
+version: '3.8'
+
 services:
+  # Database
   db:
-    image: postgres:14
+    image: postgres:14-alpine
     restart: always
     environment:
       POSTGRES_USER: postgres
@@ -10,67 +13,154 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # PostgreSQL Exporter for Prometheus
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    environment:
+      DATA_SOURCE_NAME: postgresql://postgres:Mjjagkaz012.@db:5432/logistica?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      - db
+    restart: unless-stopped
+
+  # Backend API
   backend:
     build:
       context: .
       dockerfile: Dockerfile.backend
-    # Dev: ensure deps inside container match bind-mounted requirements
-    command: sh -c "pip install --no-cache-dir -r requirements.txt && flask run --host=0.0.0.0 --port=5000"
-    working_dir: /app
-    volumes:
-      - ./backend:/app
+      target: runtime
     ports:
       - "5000:5000"
     depends_on:
-      - db
+      db:
+        condition: service_healthy
     environment:
-      FLASK_ENV: development
+      FLASK_ENV: production
       FLASK_APP: wsgi.py
       DATABASE_URL: postgresql://postgres:Mjjagkaz012.@db:5432/logistica
       JWT_SECRET_KEY: supersecretkey
       PYTHONUNBUFFERED: "1"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
 
+  # Frontend Application
   frontend:
     build:
-      context: ./frontend
-      dockerfile: ../Dockerfile.frontend
-    working_dir: /app
-    # CRA dev server
-    command: npm start
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
+      context: .
+      dockerfile: Dockerfile.frontend
+      target: runtime
     ports:
-      - "3000:3000"
+      - "80:80"
     depends_on:
       - backend
-    environment:
-      # If you switch to proxy, you can add: WDS_SOCKET_PORT=0 (for docker desktop)
-      CHOKIDAR_USEPOLLING: "true"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
 
+  # Go CRT API
   go-crt-api:
     build:
       context: ./go-crt-api
       dockerfile: Dockerfile
     environment:
-      # Use container DNS name 'db'
       DATABASE_URL: postgres://postgres:Mjjagkaz012.@db:5432/logistica?sslmode=disable
     ports:
       - "8080:8080"
     depends_on:
       - db
-    volumes:
-      - ./go-crt-api:/src
+    restart: unless-stopped
 
+  # PDF Service
   pdf-service:
     build:
       context: ./go-crt-api
       dockerfile: Dockerfile.pdf
     ports:
       - "3002:3002"
+    restart: unless-stopped
+
+  # Prometheus Monitoring
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
     volumes:
-      - ./go-crt-api:/src
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+
+  # Grafana Dashboard
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+
+  # Node Exporter for system metrics
+  node-exporter:
+    image: prom/node-exporter:latest
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    restart: unless-stopped
+
+  # cAdvisor for container metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    ports:
+      - "8081:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    devices:
+      - /dev/kmsg
+    privileged: true
+    restart: unless-stopped
 
 volumes:
   pgdata:
+  prometheus_data:
+  grafana_data:

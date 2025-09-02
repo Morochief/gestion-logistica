@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from app.models import Remitente, Ciudad
-from app import db
+from app import db, cache
 
 remitentes_bp = Blueprint('remitentes', __name__, url_prefix='/api/remitentes')
 
@@ -8,6 +8,8 @@ remitentes_bp = Blueprint('remitentes', __name__, url_prefix='/api/remitentes')
 
 
 @remitentes_bp.route('/', methods=['GET'])
+# Cache por 5 minutos (más corto por paginación/búsqueda)
+@cache.cached(timeout=300)
 def listar_remitentes():
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 50, type=int)  # Cambiar de 10 a 50

@@ -16,7 +16,8 @@ from app.models import db, MIC, CRT
 from app.utils.layout_mic import generar_micdta_pdf_con_datos
 
 mic_guardados_bp = Blueprint(
-    "mic_guardados", __name__, url_prefix="/api/mic-guardados")
+    "mic_guardados", __name__, url_prefix="/api/mic-guardados"
+)
 
 # ========= Helpers =========
 
@@ -189,15 +190,107 @@ def _build_mic_model_from_dict(mic_data, crt_id=None):
     )
     return mic
 
-# ========= Endpoints =========
 
+# ✅ CONFIGURACIÓN PROFESIONAL DE ESTADOS
+ESTADOS_MIC_CONFIG = {
+    'PROVISORIO': {
+        'label': 'Provisorio',
+        'can_transition_to': ['DEFINITIVO', 'ANULADO'],
+        'requires_confirmation': False,
+        'allow_direct_edit': True,
+        'is_final': False
+    },
+    'DEFINITIVO': {
+        'label': 'Definitivo',
+        'can_transition_to': ['CONFIRMADO', 'EN_PROCESO', 'ANULADO'],
+        'requires_confirmation': True,
+        'allow_direct_edit': True,
+        'is_final': False
+    },
+    'CONFIRMADO': {
+        'label': 'Confirmado',
+        'can_transition_to': ['EN_PROCESO', 'FINALIZADO', 'ANULADO'],
+        'requires_confirmation': True,
+        'allow_direct_edit': False,
+        'is_final': False
+    },
+    'EN_PROCESO': {
+        'label': 'En Proceso',
+        'can_transition_to': ['FINALIZADO', 'ANULADO'],
+        'requires_confirmation': True,
+        'allow_direct_edit': False,
+        'is_final': False
+    },
+    'FINALIZADO': {
+        'label': 'Finalizado',
+        'can_transition_to': [],
+        'requires_confirmation': False,
+        'allow_direct_edit': False,
+        'is_final': True
+    },
+    'ANULADO': {
+        'label': 'Anulado',
+        'can_transition_to': [],
+        'requires_confirmation': False,
+        'allow_direct_edit': False,
+        'is_final': True
+    }
+}
+
+
+def validar_transicion_estado(estado_actual, estado_nuevo):
+    """
+    Validar que la transición de estado sea válida según las reglas de negocio
+    """
+    if not estado_actual or not estado_nuevo:
+        return False, "Estados no pueden estar vacíos"
+
+    if estado_actual == estado_nuevo:
+        return True, "Sin cambios"
+
+    config_actual = ESTADOS_MIC_CONFIG.get(estado_actual)
+    if not config_actual:
+        return False, f"Estado actual '{estado_actual}' no es válido"
+
+    if estado_nuevo not in ESTADOS_MIC_CONFIG:
+        return False, f"Estado nuevo '{estado_nuevo}' no es válido"
+
+    if estado_nuevo not in config_actual['can_transition_to']:
+        return False, f"No se puede cambiar de '{estado_actual}' a '{estado_nuevo}'"
+
+    return True, "Transición válida"
+
+
+def puede_editar_mic(estado_actual):
+    """
+    Verificar si un MIC en cierto estado puede ser editado
+    """
+    config = ESTADOS_MIC_CONFIG.get(estado_actual, {})
+    return config.get('allow_direct_edit', False)
+
+
+def registrar_cambio_estado(mic_id, estado_anterior, estado_nuevo, usuario=None, motivo=None):
+    """
+    Registrar el cambio de estado para auditoría (opcional - implementar tabla de auditoría)
+    """
+    try:
+        print(
+            f"📊 AUDITORIA: MIC {mic_id} cambió de {estado_anterior} a {estado_nuevo}")
+        if usuario:
+            print(f"👤 Usuario: {usuario}")
+        if motivo:
+            print(f"📝 Motivo: {motivo}")
+    except Exception as e:
+        print(f"⚠️ Error registrando auditoría: {e}")
+
+
+# ========= Endpoints =========
 
 @mic_guardados_bp.route("/", methods=["GET"])
 def listar_mics_guardados():
     """
     Lista MICs guardados con paginación + filtros.
-    Devuelve cada item con TODOS los campos 'campo_*' (to_dict_mic_completo),
-    así el front puede reutilizar los mismos nombres.
+    Devuelve cada item con TODOS los campos 'campo_*' (to_dict_mic_completo).
     """
     try:
         page = request.args.get("page", 1, type=int)
@@ -226,8 +319,10 @@ def listar_mics_guardados():
 
         if placa:
             like_placa = f"%{placa}%"
-            query = query.filter(or_(MIC.campo_11_placa.ilike(like_placa),
-                                     MIC.campo_15_placa_semi.ilike(like_placa)))
+            query = query.filter(
+                or_(MIC.campo_11_placa.ilike(like_placa),
+                    MIC.campo_15_placa_semi.ilike(like_placa))
+            )
 
         if destino:
             query = query.filter(MIC.campo_8_destino.ilike(f"%{destino}%"))
@@ -426,3 +521,227 @@ def crear_mic_desde_crt_guardado(crt_id):
         print(f"❌ ERROR CREANDO MIC DESDE CRT {crt_id}:")
         print(traceback.format_exc())
         return jsonify({"success": False, "error": str(e), "trace": traceback.format_exc()}), 500
+
+
+# ========== PUT con VALIDACIONES PROFESIONALES ==========
+@mic_guardados_bp.route('/<int:mic_id>', methods=['PUT'])
+def actualizar_mic_guardado(mic_id):
+    """
+    Actualizar un MIC existente en la base de datos CON VALIDACIONES PROFESIONALES
+    """
+    try:
+        print(f"🔄 ACTUALIZANDO MIC {mic_id}...")
+
+        # Obtener datos del request
+        data = request.json or {}
+        if not data:
+            return jsonify({"error": "No se recibieron datos"}), 400
+
+        # Buscar el MIC existente
+        mic_existente = MIC.query.get(mic_id)
+        if not mic_existente:
+            return jsonify({"error": "MIC no encontrado"}), 404
+
+        estado_actual = mic_existente.campo_4_estado or 'PROVISORIO'
+
+        # ✅ VALIDAR CAMBIO DE ESTADO SI ESTÁ PRESENTE
+        if 'campo_4_estado' in data:
+            estado_nuevo = (data['campo_4_estado'] or '').upper()
+
+            # Validar transición
+            es_valida, mensaje = validar_transicion_estado(
+                estado_actual, estado_nuevo)
+            if not es_valida:
+                return jsonify({
+                    "error": f"Transición de estado no válida: {mensaje}",
+                    "estado_actual": estado_actual,
+                    "estado_solicitado": estado_nuevo,
+                    "transiciones_permitidas": ESTADOS_MIC_CONFIG.get(estado_actual, {}).get('can_transition_to', [])
+                }), 400
+
+            # Registrar cambio para auditoría
+            if estado_actual != estado_nuevo:
+                usuario_actualizacion = data.get(
+                    'usuario_actualizacion', 'Sistema')
+                motivo = data.get('cambio_estado_motivo',
+                                  f'Cambio de {estado_actual} a {estado_nuevo}')
+                registrar_cambio_estado(
+                    mic_id, estado_actual, estado_nuevo, usuario_actualizacion, motivo)
+
+        # ✅ VALIDAR SI PUEDE EDITAR OTROS CAMPOS
+        campos_editables = [
+            'campo_1_transporte', 'campo_2_numero', 'campo_3_transporte',
+            'campo_5_hoja', 'campo_6_fecha', 'campo_7_pto_seguro',
+            'campo_8_destino', 'campo_9_datos_transporte', 'campo_10_numero',
+            'campo_11_placa', 'campo_12_modelo_chasis', 'campo_13_siempre_45',
+            'campo_14_anio', 'campo_15_placa_semi', 'campo_24_aduana',
+            'campo_25_moneda', 'campo_26_pais', 'campo_27_valor_campo16',
+            'campo_28_total', 'campo_29_seguro', 'campo_30_tipo_bultos',
+            'campo_31_cantidad', 'campo_32_peso_bruto', 'campo_33_datos_campo1_crt',
+            'campo_34_datos_campo4_crt', 'campo_35_datos_campo6_crt',
+            'campo_36_factura_despacho', 'campo_37_valor_manual',
+            'campo_38_datos_campo11_crt', 'campo_40_tramo'
+        ]
+
+        campos_a_editar = [
+            campo for campo in campos_editables if campo in data]
+
+        if campos_a_editar and not puede_editar_mic(estado_actual):
+            return jsonify({
+                "error": f"No se pueden editar campos en estado '{estado_actual}'. Solo se permite cambio de estado.",
+                "estado_actual": estado_actual,
+                "campos_intentados": campos_a_editar,
+                "accion_permitida": "Solo cambio de estado"
+            }), 403
+
+        print(f"📊 Datos recibidos para actualización: {list(data.keys())}")
+
+        # Mapear "campo_38" a "campo_38_datos_campo11_crt" si viene del front
+        if "campo_38" in data:
+            data["campo_38_datos_campo11_crt"] = data.pop("campo_38")
+
+        # Actualizar campos usando la lógica existente
+        campos_actualizables = [
+            'campo_1_transporte', 'campo_2_numero', 'campo_3_transporte',
+            'campo_4_estado', 'campo_5_hoja', 'campo_6_fecha',
+            'campo_7_pto_seguro', 'campo_8_destino', 'campo_9_datos_transporte',
+            'campo_10_numero', 'campo_11_placa', 'campo_12_modelo_chasis',
+            'campo_13_siempre_45', 'campo_14_anio', 'campo_15_placa_semi',
+            'campo_24_aduana', 'campo_25_moneda', 'campo_26_pais',
+            'campo_27_valor_campo16', 'campo_28_total', 'campo_29_seguro',
+            'campo_30_tipo_bultos', 'campo_31_cantidad', 'campo_32_peso_bruto',
+            'campo_33_datos_campo1_crt', 'campo_34_datos_campo4_crt', 'campo_35_datos_campo6_crt',
+            'campo_36_factura_despacho', 'campo_37_valor_manual', 'campo_38_datos_campo11_crt',
+            'campo_40_tramo'
+        ]
+
+        # Actualizar cada campo usando la lógica de creación
+        for campo in campos_actualizables:
+            if campo in data:
+                if campo in ['campo_27_valor_campo16', 'campo_28_total', 'campo_29_seguro',
+                             'campo_31_cantidad', 'campo_32_peso_bruto']:
+                    setattr(mic_existente, campo, _parse_num_es(data[campo]))
+                elif campo == 'campo_6_fecha':
+                    f6 = data[campo] or ""
+                    try:
+                        f6_date = datetime.strptime(
+                            f6, "%Y-%m-%d").date() if f6 else datetime.now().date()
+                    except Exception:
+                        f6_date = datetime.now().date()
+                    setattr(mic_existente, campo, f6_date)
+                else:
+                    valor = data[campo] or ""
+                    if campo in ['campo_1_transporte', 'campo_3_transporte']:
+                        valor = valor[:150]
+                    elif campo in ['campo_2_numero', 'campo_10_numero', 'campo_23_numero_campo2_crt']:
+                        valor = valor[:30]
+                    elif campo == 'campo_4_estado':
+                        valor = valor[:30]
+                    elif campo == 'campo_5_hoja':
+                        valor = valor[:20]
+                    elif campo in ['campo_7_pto_seguro', 'campo_8_destino', 'campo_24_aduana', 'campo_36_factura_despacho']:
+                        valor = valor[:100]
+                    elif campo in ['campo_11_placa', 'campo_15_placa_semi']:
+                        valor = valor[:20]
+                    elif campo == 'campo_12_modelo_chasis':
+                        valor = valor[:80]
+                    elif campo == 'campo_13_siempre_45':
+                        valor = valor[:10]
+                    elif campo == 'campo_14_anio':
+                        valor = valor[:10]
+                    elif campo in ['campo_25_moneda', 'campo_26_pais', 'campo_30_tipo_bultos']:
+                        valor = valor[:30]
+                    elif campo == 'campo_37_valor_manual':
+                        valor = valor[:100]
+                    elif campo in ['campo_9_datos_transporte', 'campo_33_datos_campo1_crt',
+                                   'campo_34_datos_campo4_crt', 'campo_35_datos_campo6_crt',
+                                   'campo_40_tramo']:
+                        valor = valor[:200]
+
+                    setattr(mic_existente, campo, valor)
+
+        db.session.commit()
+
+        print(f"✅ MIC {mic_id} actualizado exitosamente")
+
+        return jsonify({
+            "success": True,
+            "message": "MIC actualizado exitosamente",
+            "id": mic_existente.id,
+            "numero_crt": mic_existente.campo_23_numero_campo2_crt,
+            "estado_anterior": estado_actual,
+            "estado_actual": mic_existente.campo_4_estado,
+            "transiciones_disponibles": ESTADOS_MIC_CONFIG.get(mic_existente.campo_4_estado, {}).get('can_transition_to', [])
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"❌ ERROR ACTUALIZANDO MIC {mic_id}:")
+        print(traceback.format_exc())
+        return jsonify({"error": f"Error actualizando MIC: {str(e)}"}), 500
+
+
+@mic_guardados_bp.route('/<int:mic_id>/duplicate', methods=['POST'])
+def duplicar_mic_guardado(mic_id):
+    """
+    Crear una copia de un MIC existente
+    """
+    try:
+        print(f"📋 DUPLICANDO MIC {mic_id}...")
+
+        # Buscar el MIC original
+        mic_original = MIC.query.get(mic_id)
+        if not mic_original:
+            return jsonify({"error": "MIC original no encontrado"}), 404
+
+        # Crear nuevo MIC copiando datos del original usando tu función
+        mic_data_original = to_dict_mic_completo(mic_original)
+
+        # Modificar algunos campos para la copia
+        mic_data_original[
+            "campo_23_numero_campo2_crt"] = f"{mic_data_original.get('campo_23_numero_campo2_crt', '')}_COPIA"
+        mic_data_original["campo_4_estado"] = "PROVISORIO"
+        mic_data_original["campo_6_fecha"] = datetime.now().strftime(
+            '%Y-%m-%d')
+
+        # Crear nuevo MIC
+        nuevo_mic = _build_mic_model_from_dict(
+            mic_data_original, crt_id=mic_original.crt_id)
+
+        # Guardar el nuevo MIC
+        db.session.add(nuevo_mic)
+        db.session.commit()
+
+        print(f"✅ MIC duplicado exitosamente: {mic_id} -> {nuevo_mic.id}")
+
+        return jsonify({
+            "success": True,
+            "message": "MIC duplicado exitosamente",
+            "id": nuevo_mic.id,
+            "id_original": mic_id,
+            "numero_crt": nuevo_mic.campo_23_numero_campo2_crt,
+            "estado": nuevo_mic.campo_4_estado
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        import traceback
+        print(f"❌ ERROR DUPLICANDO MIC {mic_id}:")
+        print(traceback.format_exc())
+        return jsonify({"error": f"Error duplicando MIC: {str(e)}"}), 500
+
+
+# ========== NUEVO ENDPOINT: CONFIG ESTADOS ==========
+@mic_guardados_bp.route('/estados-config', methods=['GET'])
+def obtener_configuracion_estados():
+    """
+    Obtener la configuración de estados y transiciones válidas
+    """
+    try:
+        return jsonify({
+            "estados": ESTADOS_MIC_CONFIG,
+            "message": "Configuración de estados obtenida exitosamente"
+        }), 200
+    except Exception as e:
+        return jsonify({"error": f"Error obteniendo configuración: {str(e)}"}), 500
