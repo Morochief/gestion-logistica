@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# PDFs de pruebas locales
+backend/test_*.pdf
+dev-tools/*.pdf

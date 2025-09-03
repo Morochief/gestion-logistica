@@ -51,7 +51,7 @@ def dibujar_lineas_dinamicas(c, lineas):
             texto_legal = (
                 "O transporte realizado ao amparo deste Cohecimento de Transporte Internacional esta sujeito as disposicoes do Convenio "
                 "sobre o Contrato de Transporte e a Responsabilidade Civil do transportador no transporte terrestre Internacional de "
-                "Mercadorias, as quais anulan toda estipulacao contraria as mesmas em perjuizo do remetente oudo consignatario.- "
+                "Mercadorias, as quais anulan toda estipulacao contraria as mesmas em perjuicio do remetente oudo consignatario.- "
                 "El transporte realizado bajo esta Carta de Porte Internacional está sujeto a las disposiciones del Convenio sobre el "
                 "Contrato de Transporte y la Responsabilidad Civil del Portador en el Transporte Terrestre Internacional de Mercancias, las "
                 "cuales anulan toda estipulación que se aparte de ellas en perjuicio del remitente o del consignatario."
@@ -91,6 +91,56 @@ def dibujar_lineas_dinamicas(c, lineas):
                 y_pos = y_legal_start - (i * espacio_entre_lineas)
                 if y_pos > y_pdf - radio:
                     c.drawString(x_legal, y_pos, linea)
+
+    # === Función para agregar texto multilínea en el campo 11 ===
+    def agregar_texto_campo11(texto_personalizado=None):
+        # Solo agregar texto si se proporciona uno
+        if texto_personalizado is None:
+            return  # Campo vacío por defecto
+
+        # Coordenadas del campo 11
+        x_campo11 = 31
+        # Mucho más arriba (era 335, ahora 315)
+        y_campo11_top = alto_pagina - 315
+        ancho_campo11 = 378
+        alto_campo11 = 119
+
+        c.setFont("Helvetica", 4.5)  # Fuente de 4.5 puntos exactos
+        c.setFillColor(black)
+
+        # Función para dividir el texto en líneas que caben en el ancho disponible
+        def dividir_texto_campo11(texto, ancho_max, fuente, tamaño):
+            palabras = texto.split()
+            lineas = []
+            linea_actual = ""
+            for palabra in palabras:
+                test_linea = linea_actual + " " + palabra if linea_actual else palabra
+                ancho_test = c.stringWidth(test_linea, fuente, tamaño)
+                if ancho_test <= ancho_max:
+                    linea_actual = test_linea
+                else:
+                    if linea_actual:
+                        lineas.append(linea_actual)
+                    linea_actual = palabra
+            if linea_actual:
+                lineas.append(linea_actual)
+            return lineas
+
+        lineas_texto = dividir_texto_campo11(
+            texto_personalizado, ancho_campo11, "Helvetica", 4.5)
+
+        # Espaciado entre líneas muy reducido para maximizar el espacio
+        espacio_entre_lineas = 5.2
+
+        # Dibujar las líneas de texto
+        for i, linea in enumerate(lineas_texto):
+            y_pos = y_campo11_top - (i * espacio_entre_lineas)
+            # Solo dibujar si la línea está dentro del área del campo
+            if y_pos >= (y_campo11_top - alto_campo11):
+                c.drawString(x_campo11, y_pos, linea)
+
+    # Llamar a la función para agregar el texto del campo 11 (vacío por defecto)
+    agregar_texto_campo11()  # Sin parámetro = campo vacío
 
     # === Títulos y leyendas ===
     alto_pagina = A4[1]
@@ -159,7 +209,7 @@ def dibujar_lineas_dinamicas(c, lineas):
     c.setFont("Helvetica-Bold", 7)
     c.drawString(x_titulo11, y_titulo11_pdf,
                  "11- Quantidade e categoria de volumes, marcas e números, tipos de mercaderías, contelners e acessórios.")
-    c.drawString(x_titulo11, y_titulo11_pdf - 10,
+    c.drawString(x_titulo11, y_titulo11_pdf - 8,  # Reducido de -10 a -8
                  "Cantidad y clase de bultos, marcas y números, tipo de mercancías, contenedores y accesorios")
     x_titulo12 = 412
     y_titulo12_ill = 326
@@ -270,7 +320,7 @@ def dibujar_lineas_dinamicas(c, lineas):
     y_titulo23_pdf = alto_pagina - y_titulo23_ill
     c.setFont("Helvetica-Bold", 6)
     c.drawString(x_titulo23, y_titulo23_pdf,
-                 "As mercadorias consignadas neste Conhecimiento de Transporte foran recebidas pelo")
+                 "As mercadorias consignadas neste Conhecimento de Transporte foran recebidas pelo")
     c.drawString(x_titulo23, y_titulo23_pdf - 6,
                  "transportador aparentemente em bom estado, sob as condicoes gerais que figuram ")
     c.drawString(x_titulo23, y_titulo23_pdf - 12, "no verso.")
@@ -326,7 +376,7 @@ lineas = [
     {"tipo": "rect", "x": 296, "y": 243, "ancho": 273,  "alto": 37,   "grosor": 1},
     # [11] 10- Transportes sucesivos
     {"tipo": "rect", "x": 296, "y": 280, "ancho": 273,  "alto": 35,   "grosor": 1},
-    # [12] 11- Mercancía (descripción principal)
+    # [12] 11- Mercancía (descripción principal) - SIN CAMBIOS EN DIMENSIONES
     {"tipo": "rect", "x": 29,  "y": 315, "ancho": 382,  "alto": 119,  "grosor": 1},
     # [13] 12- Peso bruto
     {"tipo": "rect", "x": 411, "y": 315, "ancho": 158,  "alto": 39,   "grosor": 1},

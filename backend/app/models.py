@@ -25,12 +25,16 @@ class Usuario(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     nombre_completo = db.Column(db.String(100), nullable=False)
     usuario = db.Column(db.String(50), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)
     clave_hash = db.Column(db.String(256), nullable=False)
     rol = db.Column(db.String(20), nullable=False, default='operador')
     estado = db.Column(db.String(15), nullable=False, default='activo')
     creado_en = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    ultimo_login = db.Column(db.DateTime, nullable=True)
+    refresh_token = db.Column(db.String(512), nullable=True)
     movimientos = db.relationship('Movimiento', backref='usuario', lazy=True)
     reportes = db.relationship('Reporte', backref='usuario', lazy=True)
+    crts = db.relationship('CRT', backref='usuario_crt', lazy=True)
 
 
 class Moneda(db.Model):
@@ -58,7 +62,8 @@ class Transportadora(db.Model):
     __tablename__ = 'transportadoras'
     id = db.Column(db.Integer, primary_key=True)
     codigo = db.Column(db.String(30), nullable=False)
-    codigo_interno = db.Column(db.String(30))
+    # Campo numérico para honorario base
+    honorario = db.Column(db.Numeric(18, 2), default=0)
     nombre = db.Column(db.String(100), nullable=False)
     direccion = db.Column(db.String(120))
     ciudad_id = db.Column(db.Integer, db.ForeignKey('ciudades.id'))
@@ -165,6 +170,14 @@ class CRT(db.Model):
     formalidades_aduana = db.Column(db.Text)
     fecha_firma = db.Column(db.DateTime)
     usuario_id = db.Column(db.Integer, db.ForeignKey('usuarios.id'))
+
+    # Campos de firma editables
+    firma_remitente = db.Column(db.String(200))
+    firma_transportador = db.Column(db.String(200))
+    firma_destinatario = db.Column(db.String(200))
+    firma_remitente = db.Column(db.String(200))
+    firma_transportador = db.Column(db.String(200))
+    firma_destinatario = db.Column(db.String(200))
 
     # 🔥 RELATIONSHIPS PARA JOINS
     remitente = db.relationship('Remitente', foreign_keys=[remitente_id])

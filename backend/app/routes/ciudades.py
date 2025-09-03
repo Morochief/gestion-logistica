@@ -1,11 +1,14 @@
 from flask import Blueprint, request, jsonify
 from app.models import Ciudad, Pais
-from app import db
+from app import db, cache
 
 ciudades_bp = Blueprint('ciudades', __name__, url_prefix='/api/ciudades')
 
 # Listar ciudades (puede filtrar por país)
+
+
 @ciudades_bp.route('/', methods=['GET'])
+@cache.cached(timeout=600)  # Cache por 10 minutos
 def listar_ciudades():
     pais_id = request.args.get('pais_id', type=int)
     query = Ciudad.query
@@ -17,12 +20,14 @@ def listar_ciudades():
             "id": c.id,
             "nombre": c.nombre,
             "pais_id": c.pais_id,
-            "pais_nombre": c.pais.nombre if c.pais else "",  # <--- ESTE CAMPO NUEVO
+            "pais": c.pais.nombre if c.pais else "",
         }
         for c in ciudades
     ])
 
 # Crear ciudad
+
+
 @ciudades_bp.route('/', methods=['POST'])
 def crear_ciudad():
     data = request.json
@@ -41,6 +46,8 @@ def crear_ciudad():
     return jsonify({"message": "Ciudad creada", "id": ciudad.id}), 201
 
 # Modificar ciudad
+
+
 @ciudades_bp.route('/<int:id>', methods=['PUT'])
 def modificar_ciudad(id):
     ciudad = Ciudad.query.get_or_404(id)
@@ -55,6 +62,8 @@ def modificar_ciudad(id):
     return jsonify({"message": "Ciudad modificada"})
 
 # Eliminar ciudad
+
+
 @ciudades_bp.route('/<int:id>', methods=['DELETE'])
 def eliminar_ciudad(id):
     ciudad = Ciudad.query.get_or_404(id)

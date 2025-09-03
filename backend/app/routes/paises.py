@@ -1,12 +1,15 @@
 from flask import Blueprint, request, jsonify
 from app.models import Pais
-from app import db
+from app import db, cache
 from sqlalchemy.exc import IntegrityError
 
 paises_bp = Blueprint('paises', __name__, url_prefix='/api/paises')
 
 # Listar países
+
+
 @paises_bp.route('/', methods=['GET'])
+@cache.cached(timeout=600)  # Cache por 10 minutos
 def listar_paises():
     paises = Pais.query.order_by(Pais.nombre).all()
     return jsonify([
@@ -15,6 +18,8 @@ def listar_paises():
     ])
 
 # Crear país
+
+
 @paises_bp.route('/', methods=['POST'])
 def crear_pais():
     data = request.json
@@ -33,6 +38,8 @@ def crear_pais():
         return jsonify({"error": "Código de país ya existe"}), 409
 
 # Modificar país
+
+
 @paises_bp.route('/<int:id>', methods=['PUT'])
 def modificar_pais(id):
     pais = Pais.query.get_or_404(id)
@@ -43,6 +50,8 @@ def modificar_pais(id):
     return jsonify({"message": "País modificado"})
 
 # Eliminar país
+
+
 @paises_bp.route('/<int:id>', methods=['DELETE'])
 def eliminar_pais(id):
     pais = Pais.query.get_or_404(id)

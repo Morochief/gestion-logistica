@@ -59,6 +59,36 @@ def to_dict_crt(crt):
         v = getattr(obj, attr, default)
         return v if v is not None else default
 
+    # Función auxiliar para formatear números
+    def format_number(value, decimals=2):
+        if value is None or value == "":
+            return ""
+        try:
+            num = float(value)
+            return f"{num:.{decimals}f}".replace(".", ",")
+        except (ValueError, TypeError):
+            return str(value)
+
+    # Función auxiliar para formatear pesos (3 decimales)
+    def format_weight(value):
+        if value is None or value == "":
+            return ""
+        try:
+            num = float(value)
+            return f"{num:.3f}".replace(".", ",")
+        except (ValueError, TypeError):
+            return str(value)
+
+    # Función auxiliar para formatear volumen (5 decimales)
+    def format_volume(value):
+        if value is None or value == "":
+            return ""
+        try:
+            num = float(value)
+            return f"{num:.5f}".replace(".", ",")
+        except (ValueError, TypeError):
+            return str(value)
+
     return {
         "id": crt.id,
         "numero_crt": val(crt, 'numero_crt', ''),
@@ -78,24 +108,27 @@ def to_dict_crt(crt):
         "pais_emision_id": crt.pais_emision_id,
         "lugar_entrega": val(crt, 'lugar_entrega', ''),
         "detalles_mercaderia": val(crt, 'detalles_mercaderia', ''),
-        "peso_bruto": str(val(crt, 'peso_bruto', '')),
-        "peso_neto": str(val(crt, 'peso_neto', '')),
-        "volumen": str(val(crt, 'volumen', '')),
+        "peso_bruto": format_weight(val(crt, 'peso_bruto', '')),
+        "peso_neto": format_weight(val(crt, 'peso_neto', '')),
+        "volumen": format_volume(val(crt, 'volumen', '')),
         "incoterm": val(crt, 'incoterm', ''),
         "moneda_id": crt.moneda_id,
         "moneda": crt.moneda.nombre if crt.moneda else "",
-        "valor_incoterm": str(val(crt, 'valor_incoterm', '')),
-        "valor_mercaderia": str(val(crt, 'valor_mercaderia', '')),
-        "declaracion_mercaderia": str(val(crt, 'declaracion_mercaderia', '')),
+        "valor_incoterm": format_number(val(crt, 'valor_incoterm', ''), 2),
+        "valor_mercaderia": format_number(val(crt, 'valor_mercaderia', ''), 2),
+        "declaracion_mercaderia": format_number(val(crt, 'declaracion_mercaderia', ''), 2),
         "factura_exportacion": val(crt, 'factura_exportacion', ''),
         "nro_despacho": val(crt, 'nro_despacho', ''),
         "formalidades_aduana": val(crt, 'formalidades_aduana', ''),
-        "valor_flete_externo": str(val(crt, 'valor_flete_externo', '')),
-        "valor_reembolso": str(val(crt, 'valor_reembolso', '')),
+        "valor_flete_externo": format_number(val(crt, 'valor_flete_externo', ''), 2),
+        "valor_reembolso": format_number(val(crt, 'valor_reembolso', ''), 2),
         "transporte_sucesivos": val(crt, 'transporte_sucesivos', ''),
         "observaciones": val(crt, 'observaciones', ''),
         "fecha_firma": crt.fecha_firma.strftime('%Y-%m-%d') if crt.fecha_firma else "",
         "gastos": [to_dict_gasto(g) for g in crt.gastos],
+        "firma_remitente": crt.firma_remitente,
+        "firma_transportador": crt.firma_transportador,
+        "firma_destinatario": crt.firma_destinatario,
     }
 
 # ========== SIGUIENTE NÚMERO CRT ==========
@@ -532,7 +565,10 @@ def crear_crt():
             transporte_sucesivos=data.get("transporte_sucesivos"),
             observaciones=data.get("observaciones"),
             fecha_firma=datetime.strptime(
-                data.get("fecha_firma"), "%Y-%m-%d") if data.get("fecha_firma") else None
+                data.get("fecha_firma"), "%Y-%m-%d") if data.get("fecha_firma") else None,
+            firma_remitente=data.get("firma_remitente"),
+            firma_transportador=data.get("firma_transportador"),
+            firma_destinatario=data.get("firma_destinatario")
         )
         db.session.add(crt)
         db.session.flush()
@@ -692,6 +728,11 @@ def editar_crt(crt_id):
         crt.observaciones = data.get("observaciones", crt.observaciones)
         crt.fecha_firma = datetime.strptime(data.get(
             "fecha_firma"), "%Y-%m-%d") if data.get("fecha_firma") else crt.fecha_firma
+        crt.firma_remitente = data.get("firma_remitente", crt.firma_remitente)
+        crt.firma_transportador = data.get(
+            "firma_transportador", crt.firma_transportador)
+        crt.firma_destinatario = data.get(
+            "firma_destinatario", crt.firma_destinatario)
 
         # Actualizar gastos si se proporcionan (mantener igual)
         if "gastos" in data:
@@ -717,7 +758,7 @@ def editar_crt(crt_id):
             crt.observaciones = (observaciones_originales or "") + log_cambios
 
             print(
-                f"✅ CRT {crt.numero_crt} editado - Cambios registrados: {', '.join(cambios_realizados)}")
+                f"[SUCCESS] CRT {crt.numero_crt} editado - Cambios registrados: {', '.join(cambios_realizados)}")
         else:
             print(
                 f"🔇 CRT {crt.numero_crt} editado - Sin cambios significativos para auditar")
@@ -734,7 +775,7 @@ def editar_crt(crt_id):
 
     except Exception as e:
         db.session.rollback()
-        print(f"❌ Error editando CRT {crt_id}: {e}")
+        print(f"[ERROR] Error editando CRT {crt_id}: {e}")
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
@@ -842,8 +883,20 @@ def generar_pdf_crt(crt_id):
                     result.append(line)
             return result
 
-        def draw_text_fit_area(c, text, x, y, width, height, fontName="Helvetica", min_font=5, max_font=8, leading_ratio=1.13):
+        def draw_text_fit_area(c, text, x, y, width, height, fontName="Helvetica", min_font=4.5, max_font=6.0, leading_ratio=1.1):
+            """Función mejorada para ajustar texto al área disponible con mejor reducción de fuente"""
+            if not text or text.strip() == "":
+                return y
+
+            # Calcular el número máximo de líneas que caben con fuente mínima
+            line_height_min = min_font * leading_ratio
+            max_lines = max(1, int(height // line_height_min))
+
             font_size = max_font
+            lines = []
+            best_fit = None
+
+            # Probar diferentes tamaños de fuente desde el máximo hasta el mínimo
             while font_size >= min_font:
                 lines = []
                 for original_line in (text or "").split('\n'):
@@ -857,24 +910,82 @@ def generar_pdf_crt(crt_id):
                             if line:
                                 lines.append(line)
                             line = word
+                            # Si la palabra individual es demasiado larga, truncarla
+                            if stringWidth(line, fontName, font_size) > width:
+                                truncated = line
+                                while stringWidth(truncated + "...", fontName, font_size) > width and len(truncated) > 1:
+                                    truncated = truncated[:-1]
+                                if len(truncated) > 1:
+                                    lines.append(truncated + "...")
+                                else:
+                                    lines.append("...")
+                                line = ""
+                                break
                     if line:
                         lines.append(line)
+
+                # Verificar si este tamaño de fuente cabe en el área
                 line_height = font_size * leading_ratio
-                total_height = len(lines) * line_height
-                if total_height <= height:
-                    break
-                font_size -= 0.5
-            max_lines = int(height // (font_size * leading_ratio))
+                required_height = len(lines) * line_height
+
+                if required_height <= height and len(lines) <= max_lines:
+                    best_fit = (lines, font_size)
+                    break  # Encontramos un ajuste perfecto
+
+                # Si no cabe, reducir fuente en incrementos más pequeños
+                font_size -= 0.25
+
+            # Si no encontramos un ajuste perfecto, usar el mejor disponible
+            if not best_fit and lines:
+                best_fit = (lines, font_size)
+
+            # Si aún no tenemos líneas, forzar con fuente mínima
+            if not best_fit:
+                font_size = min_font
+                words = (text or "").replace('\n', ' ').split()
+                current_line = ""
+                lines = []
+
+                for word in words:
+                    test = f"{current_line} {word}".strip()
+                    if stringWidth(test, fontName, font_size) <= width:
+                        current_line = test
+                    else:
+                        if current_line:
+                            lines.append(current_line)
+                            current_line = word
+                        else:
+                            # Palabra demasiado larga, truncar
+                            truncated = word
+                            while stringWidth(truncated + "...", fontName, font_size) > width and len(truncated) > 1:
+                                truncated = truncated[:-1]
+                            lines.append(
+                                truncated + "..." if len(truncated) > 1 else "...")
+                            current_line = ""
+
+                if current_line:
+                    lines.append(current_line)
+
+                best_fit = (lines, font_size)
+
+            # Limitar al número máximo de líneas y truncar si es necesario
+            lines, font_size = best_fit
             if len(lines) > max_lines:
                 lines = lines[:max_lines]
-                if lines:
-                    if len(lines[-1]) > 4:
-                        lines[-1] = lines[-1][:-3] + "..."
+                if lines and len(lines[-1]) > 4:
+                    lines[-1] = lines[-1][:-3] + "..."
+
+            # Dibujar las líneas
             c.setFont(fontName, font_size)
             curr_y = y
+            line_height = font_size * leading_ratio
+
             for line in lines:
+                if curr_y - line_height < y - height:
+                    break  # No dibujar fuera del área
                 c.drawString(x, curr_y, line)
-                curr_y -= font_size * leading_ratio
+                curr_y -= line_height
+
             return curr_y
 
         def format_number(num, decimals=3):
@@ -1124,7 +1235,7 @@ def generar_pdf_crt(crt_id):
         y11 = 498
         width11 = 375
         height11 = 100
-        texto_campo11 = safe_get_attr(crt, 'detalles_mercaderia')
+        texto_campo11 = crt.detalles_mercaderia or ""
 
         draw_text_fit_area(
             c, texto_campo11,
@@ -1920,7 +2031,8 @@ def obtener_paises():
         for p in paises:
             items.append({
                 "id": p.id,
-                "nombre": p.nombre
+                "nombre": p.nombre,
+                "codigo": p.codigo
             })
 
         return jsonify({

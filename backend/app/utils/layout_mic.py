@@ -1,13 +1,16 @@
 # -*- coding: utf-8 -*-
 """
-MIC/DTA PDF Generator - Versión completa y robusta
-- Fuentes Unicode (DejaVuSans) con fallback automático
+MIC/DTA PDF Generator - Versión consolidada y estable
+- Fuentes Unicode (DejaVuSans) con fallback automático (Helvetica)
 - Helpers px→pt y coordenadas consistentes (solo trabajamos en pt dentro de dibujo)
-- Ajuste de texto con búsqueda binaria (Campo 38) + márgenes y reservas de título
+- fit_text_box aplicado a TODOS los campos para mejor presentación
+- Ajuste de texto con búsqueda binaria optimizado
 - Estilos cacheados y centralizados
 - saveState()/restoreState() para evitar fugas de estado
 - Limpieza segura de caracteres de control (sin comerse acentos)
 - Refactors de cajas/títulos
+- Valores por defecto y "******" (16–22)
+- Entidades con tipo y número de documento
 """
 
 import os
@@ -21,141 +24,104 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfbase import pdfmetrics
 
-
 # =============================
 #        CONFIG / CONSTANTES
 # =============================
 
-# Relación px→pt usada en el layout original
 PT_PER_PX = 0.75
 
-# Offsets y márgenes estándar
-# distancia desde el borde superior de la caja para el título
 TITLE_OFFSET_PT = 24
-# distancia adicional para subtítulo desde el título
 SUBTITLE_OFFSET_PT = 16
-FIELD_PADDING_PT = 8               # padding interno general de cajas
-# altura reservada para título/subtítulo (para zonas de texto bajo títulos)
-FIELD_TITLE_RESERVED_PT = 60
+FIELD_PADDING_PT = 8
+FIELD_TITLE_RESERVED_PT = 60  # (se mantiene, no se usa directamente)
 
-# Fuente por defecto (intentaremos Unicode primero)
+# CAMBIO: reserva de espacio para encabezados (título+subtítulo)
+HEADER_RESERVED_PT = 56
+
 FONT_REGULAR = "DejaVuSans"
 FONT_BOLD = "DejaVuSans-Bold"
 FALLBACK_REGULAR = "Helvetica"
 FALLBACK_BOLD = "Helvetica-Bold"
 
-# Tamaños por defecto
-DEFAULT_FONT_SIZE = 12
-
-# Debug global (activar/desactivar prints)
-DEBUG = True
-
+DEBUG = False  # poné True si querés logs
 
 # =============================
 #         UTILIDADES
 # =============================
 
-def px2pt(v):
+
+def px2pt(v: float) -> float:
     return v * PT_PER_PX
 
 
-def log(msg):
+def log(msg: str):
     if DEBUG:
         try:
             print(msg)
         except UnicodeEncodeError:
-            # Fallback para consolas que no soportan Unicode
             print(msg.encode('ascii', 'replace').decode('ascii'))
 
 
 def safe_clean_text(text: str) -> str:
     """
-    Limpieza universal: normaliza saltos de línea y remueve caracteres de control problemáticos
-    (excepto \n y \t). NO elimina acentos ni caracteres Unicode válidos.
+    Limpia saltos de línea y remueve controles ASCII (excepto \n y \t).
     """
     if text is None:
         return ""
     t = text.replace('\r\n', '\n').replace('\r', '\n')
-    # Remover controles ASCII (mantiene \n y \t)
     t = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', t)
     return t
 
 
 def find_ttf_candidate_paths():
-    """
-    Intenta descubrir rutas típicas de DejaVuSans en Linux/Mac/Windows.
-    """
-    candidates = [
-        # Linux
+    return [
         "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        # Windows (Microsoft Store Python no siempre ve Windows Fonts; probamos copias locales)
         os.path.expanduser(
             "~/AppData/Local/Microsoft/Windows/Fonts/DejaVuSans.ttf"),
         os.path.expanduser(
             "~/AppData/Local/Microsoft/Windows/Fonts/DejaVuSans-Bold.ttf"),
-        # Windows ruta global (si el usuario instaló fuentes TTF)
         "C:\\Windows\\Fonts\\DejaVuSans.ttf",
         "C:\\Windows\\Fonts\\DejaVuSans-Bold.ttf",
-        # Mac
         "/Library/Fonts/DejaVuSans.ttf",
         "/Library/Fonts/DejaVuSans-Bold.ttf",
     ]
-    return candidates
-
-
-def _fonts_registered() -> bool:
-    """Verifica si las fuentes actuales están registradas en reportlab."""
-    try:
-        regs = set(pdfmetrics.getRegisteredFontNames())
-        return (FONT_REGULAR in regs) and (FONT_BOLD in regs)
-    except Exception:
-        return False
 
 
 def register_unicode_fonts():
     """
-    Registra DejaVuSans (regular y bold). Si falla, deja Helvetica como fallback silencioso.
+    Registra DejaVuSans (regular/bold) si están disponibles, sino cae a Helvetica.
     """
     global FONT_REGULAR, FONT_BOLD
     try:
-        # Si ya están registradas, no volver a registrar
-        already = FONT_REGULAR in pdfmetrics.getRegisteredFontNames(
-        ) and FONT_BOLD in pdfmetrics.getRegisteredFontNames()
-        if already:
-            log("ℹ️ Fuentes DejaVuSans ya registradas.")
+        regs = set(pdfmetrics.getRegisteredFontNames())
+        if FONT_REGULAR in regs and FONT_BOLD in regs:
             return
 
-        # Intentar encontrar archivos
-        regs = find_ttf_candidate_paths()
-        reg_path = None
-        bold_path = None
-        for p in regs:
+        reg_path, bold_path = None, None
+        for p in find_ttf_candidate_paths():
             if os.path.exists(p):
                 if p.lower().endswith("dejavusans.ttf"):
-                    reg_path = p
+                    reg_path = reg_path or p
                 elif p.lower().endswith("dejavusans-bold.ttf"):
-                    bold_path = p
+                    bold_path = bold_path or p
 
         if reg_path and bold_path:
             pdfmetrics.registerFont(TTFont(FONT_REGULAR, reg_path))
             pdfmetrics.registerFont(TTFont(FONT_BOLD, bold_path))
-            log(f"✅ Fuentes Unicode registradas: {reg_path}, {bold_path}")
+            log(f"✅ Fuentes registradas: {reg_path} / {bold_path}")
         else:
-            # Si no encontramos ambas, caer a Helvetica
             FONT_REGULAR = FALLBACK_REGULAR
             FONT_BOLD = FALLBACK_BOLD
-            log("⚠️ No se encontraron DejaVuSans TTF; usando Helvetica como fallback.")
+            log("⚠️ No se halló DejaVuSans. Usando Helvetica.")
     except Exception as e:
         FONT_REGULAR = FALLBACK_REGULAR
         FONT_BOLD = FALLBACK_BOLD
         log(
-            f"⚠️ No se pudieron registrar TTF Unicode ({e}); usando Helvetica.")
+            f"⚠️ No se pudieron registrar fuentes Unicode ({e}). Usando Helvetica.")
 
 
-# Registrar fuentes al importar el módulo (evita 500 si se usa como librería)
 register_unicode_fonts()
-
 
 # =============================
 #         ESTILOS CACHE
@@ -165,15 +131,11 @@ _STYLES = None
 
 
 def get_styles():
-    """
-    Cachea y devuelve estilos ParagraphStyle listos con fuentes Unicode (o fallback).
-    """
     global _STYLES
     if _STYLES is not None:
         return _STYLES
 
     ss = getSampleStyleSheet()
-    # Overwrite defaults to ensure Unicode-capable font
     ss["Normal"].fontName = FONT_REGULAR
     ss["Normal"].fontSize = 10
     ss["Normal"].leading = 12
@@ -190,15 +152,15 @@ def get_styles():
     _STYLES = ss
     return _STYLES
 
+# =============================
+#     DIBUJO BASE DE CAJAS
+# =============================
 
-# =============================
-#          DIBUJO BASE
-# =============================
 
 def rect_pt(c, x_px, y_px, w_px, h_px, height_px, line_width=1.0, show=True):
     """
-    Dibuja un rectángulo usando coordenadas en px del layout original,
-    transformadas a pt. Devuelve (x_pt, y_pt, w_pt, h_pt).
+    Dibuja rectángulo con coords en px (layout) convertidas a pt (ReportLab).
+    Retorna (x_pt, y_pt, w_pt, h_pt).
     """
     x, y, w, h = px2pt(x_px), px2pt(
         height_px - y_px - h_px), px2pt(w_px), px2pt(h_px)
@@ -211,10 +173,6 @@ def rect_pt(c, x_px, y_px, w_px, h_px, height_px, line_width=1.0, show=True):
 
 
 def draw_field_title(c, x_pt, y_pt, w_pt, h_pt, titulo, subtitulo, title_font=None, sub_font=None):
-    """
-    Dibuja título y subtítulo en la parte superior de una caja ya creada (en pt).
-    Defaults resueltos en tiempo de ejecución para evitar capturar fuentes no registradas.
-    """
     if title_font is None:
         title_font = FONT_BOLD
     if sub_font is None:
@@ -232,41 +190,152 @@ def draw_field_title(c, x_pt, y_pt, w_pt, h_pt, titulo, subtitulo, title_font=No
             c.drawString(tx, ty - SUBTITLE_OFFSET_PT, subtitulo)
     finally:
         c.restoreState()
-    # devuelve coordenadas útiles por si se usan
-    return (x_pt + FIELD_PADDING_PT, y_pt + FIELD_PADDING_PT, w_pt - 2*FIELD_PADDING_PT, h_pt - 2*FIELD_PADDING_PT)
-
+    # Devuelve área de contenido (con padding)
+    return (x_pt + FIELD_PADDING_PT, y_pt + FIELD_PADDING_PT,
+            w_pt - 2 * FIELD_PADDING_PT, h_pt - 2 * FIELD_PADDING_PT)
 
 # =============================
-#   AJUSTE DE TEXTO (CAMPO 38)
+#  AJUSTE DE TEXTO OPTIMIZADO
 # =============================
 
-def fit_text_box(c, text, x, y, w, h, font=None, min_font=8, max_font=14, leading_ratio=1.3, margin=12, title_reserved_h=0):
+
+def get_field_config(campo_numero):
     """
-    Ajusta texto a un rectángulo (pt) con búsqueda binaria de tamaño de fuente.
-    Respeta saltos de línea del usuario y hace wrap por palabras.
-    Dibuja el texto al final. Devuelve dict con info de renderizado.
-    Permite reservar espacio para un título en la parte superior.
+    Config específica por campo.
+    Solo tocamos tamaños de fuente y alto reservado para que el cuerpo empiece más arriba
+    (sin mover las cajas ni cambiar draw_field_title).
+    """
+
+    # ---- CAMPOS GRANDES DE LISTADOS / TEXTOS LARGOS ----
+    if campo_numero == 38:
+        return {
+            'min_font': 5,        # antes 4
+            'max_font': 12,
+            'leading_ratio': 1.12,
+            'margin': 8,
+            'title_reserved_h': 52,   # antes 56 → más área útil
+            'allow_multiline': True
+        }
+
+    # Campo 39 se maneja aparte (Paragraph/Frame), no entra aquí.
+
+    # ---- ENTIDADES (mejor lectura) 33,34,35 ----
+    if campo_numero in [33, 34, 35]:
+        return {
+            'min_font': 9,          # mantenemos legibilidad alta
+            'max_font': 14,
+            'leading_ratio': 1.18,  # un poco menos de interlineado para que entren más líneas
+            'margin': 4,            # margen más chico => más ancho útil
+            'title_reserved_h': 34,  # menos reserva arriba => el cuerpo empieza más arriba
+            'allow_multiline': True
+        }
+
+    # ---- CAMPO 9 (propietario) y 37 (precintos) ----
+    if campo_numero == 9:
+        return {
+            'min_font': 7,        # sube un poco
+            'max_font': 14,
+            'leading_ratio': 1.15,
+            'margin': 6,
+            'title_reserved_h': 44,   # menos reserva → empieza más arriba
+            'allow_multiline': True
+        }
+    if campo_numero == 37:
+        return {
+            'min_font': 7,
+            'max_font': 12,
+            'leading_ratio': 1.12,
+            'margin': 6,
+            'title_reserved_h': 42,   # baja la reserva
+            'allow_multiline': True
+        }
+
+    # ---- BLOQUE DE TOTALES PEQUEÑOS 30,31,32 (1 sola línea) ----
+    if campo_numero in [30, 31, 32]:
+        return {
+            'min_font': 9,        # más grande para que se note
+            'max_font': 16,
+            'leading_ratio': 1.2,
+            'margin': 6,
+            'title_reserved_h': 28,   # clave: antes ~56 → ahora 24 para que aparezcan
+            'allow_multiline': False  # 1 línea; recorta con "..."
+        }
+
+    # ---- MEDIANOS 7,8,24,26 (ligero ajuste) ----
+    if campo_numero in [7, 8, 24, 26]:
+        return {
+            'min_font': 7,
+            'max_font': 14,
+            'leading_ratio': 1.2,
+            'margin': 6,
+            'title_reserved_h': 48,   # un poco menos que 56
+            'allow_multiline': True
+        }
+
+    # Campos pequeños de una línea
+    else:
+        return {
+            'min_font': 8,            # sube base general para mejor lectura
+            'max_font': 16,
+            'leading_ratio': 1.2,
+            'margin': 6,
+            'title_reserved_h': 48,   # menos que 56 para ganar área
+            'allow_multiline': False
+        }
+
+
+def fit_text_box_universal(
+    c,
+    text,
+    x, y, w, h,
+    campo_numero,
+    font=None
+):
+    """
+    Ajusta texto usando configuración específica por campo.
     """
     if font is None:
         font = FONT_REGULAR
 
     text = safe_clean_text(text)
     if not text:
-        return {'font_size_used': min_font, 'lines_drawn': 0, 'truncated': False, 'effective_area': f"{w:.1f}x{h:.1f}"}
+        return {'font_size_used': 8, 'lines_drawn': 0, 'truncated': False,
+                'effective_area': f"{w:.1f}x{h:.1f}"}
 
-    eff_w = w - 2 * margin
-    # Restar la altura del título del área efectiva
-    eff_h = h - 2 * margin - title_reserved_h
+    config = get_field_config(campo_numero)
+
+    eff_w = w - 2 * config['margin']
+    eff_h = h - 2 * config['margin'] - config['title_reserved_h']
+
     if eff_w <= 0 or eff_h <= 0:
-        return {'font_size_used': min_font, 'lines_drawn': 0, 'truncated': True, 'effective_area': f"{w:.1f}x{h:.1f}"}
+        return {'font_size_used': config['min_font'], 'lines_drawn': 0, 'truncated': True,
+                'effective_area': f"{w:.1f}x{h:.1f}"}
 
-    def wrap_for_size(sz):
+    def wrap_text_for_size(sz):
+        if not config['allow_multiline']:
+            # Para campos de una línea, simplemente truncar
+            single_line = text.replace('\n', ' ').replace('\r', ' ')
+            max_chars = len(single_line)
+            while max_chars > 0:
+                test_text = single_line[:max_chars]
+                if c.stringWidth(test_text, font, sz) <= eff_w:
+                    break
+                max_chars -= 1
+
+            if max_chars < len(single_line) and max_chars > 3:
+                return [single_line[:max_chars-3] + "..."]
+            elif max_chars > 0:
+                return [single_line[:max_chars]]
+            else:
+                return [""]
+
+        # Para campos multilinea
         lines = []
-        for manu in text.split('\n'):
-            if not manu.strip():
+        for manual_line in text.split('\n'):
+            if not manual_line.strip():
                 lines.append("")
                 continue
-            words, cur = manu.split(), ""
+            words, cur = manual_line.split(), ""
             for word in words:
                 test = (cur + " " + word) if cur else word
                 if c.stringWidth(test, font, sz) <= eff_w:
@@ -279,38 +348,34 @@ def fit_text_box(c, text, x, y, w, h, font=None, min_font=8, max_font=14, leadin
                 lines.append(cur)
         return lines
 
-    lo, hi, best_sz, best_lines = int(
-        min_font), int(max_font), int(min_font), []
+    # Búsqueda binaria del tamaño óptimo
+    lo, hi = config['min_font'], config['max_font']
+    best_sz, best_lines = config['min_font'], []
 
-    # Búsqueda binaria para encontrar el tamaño de fuente óptimo
     while lo <= hi:
         mid = (lo + hi) // 2
-        lines = wrap_for_size(mid)
-        lh = mid * leading_ratio
+        lines = wrap_text_for_size(mid)
+        lh = mid * config['leading_ratio']
         total_h = lh * len(lines)
 
         if total_h <= eff_h:
-            # El texto cabe con este tamaño, intentar uno más grande
             best_sz, best_lines = mid, lines
             lo = mid + 1
         else:
-            # El texto no cabe, probar con tamaño más pequeño
             hi = mid - 1
 
-    # Si no encontramos un tamaño que funcione, usar el mínimo
     if not best_lines:
-        best_sz = min_font
-        best_lines = wrap_for_size(best_sz)
+        best_sz = config['min_font']
+        best_lines = wrap_text_for_size(best_sz)
 
+    # Dibujar el texto
     c.saveState()
     try:
         c.setFont(font, best_sz)
-        lh = best_sz * leading_ratio
-        start_x = x + margin
-
-        # Posicionar el texto desde la parte superior del área efectiva
-        # (debajo del área reservada para título)
-        start_y = y + h - margin - title_reserved_h - best_sz
+        lh = best_sz * config['leading_ratio']
+        start_x = x + config['margin']
+        start_y = y + h - config['margin'] - \
+            config['title_reserved_h'] - best_sz
 
         max_lines = int(eff_h // lh) if lh > 0 else 0
         drawn = best_lines[:max_lines]
@@ -318,16 +383,16 @@ def fit_text_box(c, text, x, y, w, h, font=None, min_font=8, max_font=14, leadin
 
         for i, ln in enumerate(drawn):
             line_y = start_y - i * lh
-            # Verificar que la línea esté dentro de los límites
-            if line_y < y + margin:
+            if line_y < y + config['margin']:
                 break
             c.drawString(start_x, line_y, ln)
 
-        # Indicador de truncamiento solo si hay espacio
-        if truncated and drawn and max_lines > 0:
-            truncate_y = start_y - max_lines * lh
-            if truncate_y >= y + margin:
-                c.drawString(start_x, truncate_y, "...")
+        # Mostrar "..." solo si realmente es necesario y hay espacio
+        if truncated and drawn and max_lines > 0 and best_sz <= config['min_font'] + 2:
+            if len(drawn) < max_lines:  # Solo si hay espacio para una línea más
+                truncate_y = start_y - len(drawn) * lh
+                if truncate_y >= y + config['margin']:
+                    c.drawString(start_x, truncate_y, "...")
 
         return {
             'font_size_used': best_sz,
@@ -338,193 +403,102 @@ def fit_text_box(c, text, x, y, w, h, font=None, min_font=8, max_font=14, leadin
     finally:
         c.restoreState()
 
-
 # =============================
-#      MULTILÍNEA GENERALES
+#      CAMPOS ESPECIALES
 # =============================
 
-def draw_multiline_text_simple(c, text, x, y, w, h, font_size=9, font=None, margin=12):
+
+def obtener_valor_campo(mic_data, key, campo_numero):
     """
-    Método simple con manejo explícito de \n (sin Frame).
-    Envuelve por palabras respetando el ancho.
-    Aplica topes (márgenes) en todos los lados.
-    Defaults resueltos en tiempo de ejecución.
+    Obtiene el valor de un campo con defaults para casos especiales.
     """
-    if font is None:
-        font = FONT_REGULAR
+    valor = ""
+    if key and mic_data:
+        valor = mic_data.get(key, "")
 
-    clean_text = safe_clean_text(text)
+    if 16 <= campo_numero <= 22:
+        if not valor or str(valor).strip() == "":
+            return "******"
 
-    # Aplicar topes/márgenes en todos los lados
-    eff_x = x + margin
-    eff_y = y + margin
-    eff_w = w - 2 * margin
-    eff_h = h - 2 * margin
+    if campo_numero == 13 and (not valor or str(valor).strip() == ""):
+        return "45 TON"
 
-    # Verificar que el área efectiva sea válida
-    if eff_w <= 0 or eff_h <= 0:
-        return
+    if campo_numero == 4 and (not valor or str(valor).strip() == ""):
+        return "PROVISORIO"
 
-    c.saveState()
-    try:
-        c.setFont(font, font_size)
-        manual_lines = clean_text.split('\n')
+    if campo_numero == 5 and (not valor or str(valor).strip() == ""):
+        return "1 / 1"
 
-        all_lines = []
-        for manual_line in manual_lines:
-            if not manual_line.strip():
-                all_lines.append("")
-                continue
+    if campo_numero == 26 and (not valor or str(valor).strip() == ""):
+        return "520-PARAGUAY"
 
-            words = manual_line.split()
-            current_line = ""
+    if campo_numero == 25 and (not valor or str(valor).strip() == ""):
+        return "DOLAR AMERICANO"
 
-            for word in words:
-                test_line = (current_line + " " +
-                             word) if current_line else word
-                if c.stringWidth(test_line, font, font_size) <= eff_w:
-                    current_line = test_line
-                else:
-                    if current_line:
-                        all_lines.append(current_line)
-                    current_line = word
-
-            if current_line:
-                all_lines.append(current_line)
-
-        line_height = font_size + 2
-        max_lines = int(eff_h / line_height) if line_height > 0 else 0
-        visible_lines = all_lines[:max_lines]
-
-        start_y = eff_y + eff_h - font_size
-        for i, line in enumerate(visible_lines):
-            line_y = start_y - (i * line_height)
-            # Verificar que la línea esté dentro de los límites verticales
-            if line_y < eff_y:
-                break
-            c.drawString(eff_x, line_y, line)
-
-        # Indicador de truncamiento solo si hay espacio
-        if len(all_lines) > max_lines and max_lines > 0:
-            truncate_y = start_y - (max_lines * line_height)
-            if truncate_y >= eff_y:
-                c.drawString(eff_x, truncate_y, "... (continúa)")
-    finally:
-        c.restoreState()
+    return str(valor) if valor else ""
 
 
-def draw_multiline_text(c, text, x, y, w, h, font_size=13, font=None, margin=12):
+def formatear_campo_entidad(mic_data, campo_key):
     """
-    Método híbrido:
-    - Si hay saltos de línea o texto muy largo, usa método simple (sin Frame)
-    - Caso contrario (texto corto), usa Paragraph/Frame para mejor calidad
-    - Aplica topes/márgenes consistentes en ambos casos
-    Defaults resueltos en tiempo de ejecución.
+    Formatea campos de entidades (33, 34, 35) asegurando que siempre
+    se muestre tipo y número de documento, incluso si viene embebido en el nombre.
     """
-    if font is None:
-        font = FONT_REGULAR
+    valor = mic_data.get(campo_key, "")
+    if not valor:
+        return ""
 
-    clean_text = safe_clean_text(text)
-    if '\n' in clean_text or len(clean_text) > 500:
-        log(f"🎯 Texto con saltos o largo ({len(clean_text)} chars) → método simple")
-        draw_multiline_text_simple(
-            c, clean_text, x, y, w, h, font_size=font_size, font=font, margin=margin)
-        return
+    if isinstance(valor, str):
+        return valor
 
-    log(f"🔍 Texto corto ({len(clean_text)} chars) → método Frame")
-    style = ParagraphStyle(
-        name='multi',
-        fontName=font,
-        fontSize=font_size,
-        leading=font_size + 2,
-        alignment=TA_LEFT,
-    )
-    html_text = clean_text.replace('\n', '<br/>')
+    if isinstance(valor, dict):
+        nombre = (valor.get('nombre') or "").strip()
+        direccion = (valor.get('direccion') or "").strip()
+        ciudad = (valor.get('ciudad') or "").strip()
+        pais = (valor.get('pais') or "").strip()
 
-    try:
-        para = Paragraph(html_text, style)
-        # Aplicar topes/márgenes al Frame también
-        frame = Frame(x + margin, y + margin, w - 2*margin, h - 2*margin,
-                      showBoundary=0, leftPadding=4, rightPadding=4,
-                      topPadding=4, bottomPadding=4)
-        frame.addFromList([para], c)
-    except Exception as e:
-        log(f"❌ Error en Paragraph/Frame: {e} → fallback simple")
-        draw_multiline_text_simple(
-            c, clean_text, x, y, w, h, font_size, font, margin)
+        tipo_doc = (valor.get('tipo_documento') or "").strip()
+        numero_doc = (valor.get('numero_documento') or "").strip()
 
+        # fallback: si no vienen separados, buscar "RUC"/"CNPJ"/"Doc" en el nombre o direccion
+        if not numero_doc:
+            for campo in [nombre, direccion]:
+                if campo and ("RUC" in campo or "CNPJ" in campo or "Doc" in campo):
+                    numero_doc = campo
+                    tipo_doc = ""  # ya viene embebido
+                    break
 
-def draw_single_line_text_with_bounds(c, text, x, y, w, h, font_size=14, font=None, margin=12):
-    """
-    Dibuja texto de una sola línea con topes en todos los lados.
-    Trunca el texto si es necesario para que no se salga de los límites.
-    Posiciona el texto correctamente debajo del área de título.
-    """
-    if font is None:
-        font = FONT_REGULAR
+        doc_str = ""
+        if tipo_doc and numero_doc:
+            doc_str = f"{tipo_doc}: {numero_doc}"
+        elif numero_doc:
+            doc_str = numero_doc
 
-    clean_text = safe_clean_text(text).replace('\n', ' ').replace('\r', ' ')
-    if not clean_text:
-        return
+        lineas = []
 
-    # Aplicar topes/márgenes
-    eff_x = x + margin
-    eff_y = y + margin
-    eff_w = w - 2 * margin
-    eff_h = h - 2 * margin
+        # Primera línea: nombre + doc
+        if nombre and doc_str:
+            lineas.append(f"{nombre} — {doc_str}")
+        elif nombre:
+            lineas.append(nombre)
+        elif doc_str:
+            lineas.append(doc_str)
 
-    # Verificar que el área efectiva sea válida
-    if eff_w <= 0 or eff_h <= 0:
-        return
+        if direccion:
+            lineas.append(direccion)
 
-    c.saveState()
-    try:
-        c.setFont(font, font_size)
+        if ciudad and pais:
+            lineas.append(f"{ciudad} - {pais}")
+        elif ciudad:
+            lineas.append(ciudad)
+        elif pais:
+            lineas.append(pais)
 
-        # Posicionar el texto en la parte superior del área efectiva (debajo del título)
-        # Usar la misma lógica que los otros campos para consistencia
-        text_y = y + h - TITLE_OFFSET_PT - SUBTITLE_OFFSET_PT - 34
+        return "\n".join(lineas)
 
-        # Verificar que esté dentro de los límites verticales
-        if text_y < eff_y or text_y > eff_y + eff_h:
-            return
+    return str(valor)
 
-        # Verificar que el texto quepa horizontalmente, truncar si es necesario
-        max_chars = len(clean_text)
-        while max_chars > 0:
-            test_text = clean_text[:max_chars]
-            if c.stringWidth(test_text, font, font_size) <= eff_w:
-                break
-            max_chars -= 1
-
-        if max_chars < len(clean_text) and max_chars > 3:
-            # Agregar "..." si se truncó
-            truncated_text = clean_text[:max_chars-3] + "..."
-            if c.stringWidth(truncated_text, font, font_size) <= eff_w:
-                clean_text = truncated_text
-            else:
-                clean_text = clean_text[:max_chars]
-        elif max_chars > 0:
-            clean_text = clean_text[:max_chars]
-        else:
-            clean_text = ""
-
-        # Dibujar el texto solo si hay espacio y está dentro de los límites
-        if clean_text:
-            c.drawString(eff_x, text_y, clean_text)
-
-    finally:
-        c.restoreState()
-
-
-# =============================
-#         CAMPO 39 (firma)
-# =============================
 
 def normalized_date(mic_data):
-    """
-    Devuelve fecha para Campo 39 desde mic_data si existe; si no, hoy.
-    """
     for k in ('campo_6_fecha', 'fecha_emision', 'fecha'):
         v = (mic_data or {}).get(k, '')
         if v:
@@ -534,21 +508,18 @@ def normalized_date(mic_data):
 
 def draw_campo39(c, x_px, y_px, w_px, h_px, height_px, mic_data=None):
     """
-    Campo 39: texto legal, línea de firma y transportador + fecha.
-    Usa estilos cacheados y Unicode.
+    Campo 39: texto legal, línea de firma, transportador + fecha.
     """
     styles = get_styles()
     X, Y, W, H = px2pt(x_px), px2pt(
         height_px - y_px - h_px), px2pt(w_px), px2pt(h_px)
 
-    # Rectángulo (no hay títulos aquí)
     c.saveState()
     try:
         c.rect(X, Y, W, H)
     finally:
         c.restoreState()
 
-    # Textos legales
     txt_es = ("Declaramos que las informaciones presentadas en este Documento son expresión de verdad, "
               "que los datos referentes a las mercaderías fueron transcriptos exactamente conforme a la "
               "declaración del remitente, las cuales son de su exclusiva responsabilidad, y que esta operación "
@@ -558,7 +529,6 @@ def draw_campo39(c, x_px, y_px, w_px, h_px, height_px, mic_data=None):
               "responsabilidade, e que esta operação obedece ao disposto no Convênio sobre Transporte Internacional Terrestre.")
     txt_firma = "39 Firma y sello del porteador / Assinatura e carimbo do transportador"
 
-    # Transportador y fecha
     nombre_transportador = ""
     if mic_data:
         nombre_transportador = (
@@ -571,27 +541,20 @@ def draw_campo39(c, x_px, y_px, w_px, h_px, height_px, mic_data=None):
             nombre_transportador = nombre_transportador.split('\n')[0].strip()
     fecha_actual = normalized_date(mic_data)
 
-    if DEBUG:
-        log(f"🚛 Campo 39 - Transportador: '{nombre_transportador}'")
-        log(f"📅 Campo 39 - Fecha: '{fecha_actual}'")
-
-    # Crear párrafos y dibujar
     para_es = Paragraph(txt_es, styles['es'])
     para_pt = Paragraph(txt_pt, styles['es'])
     para_firma = Paragraph(txt_firma, styles['firma'])
     para_transportador = Paragraph(
         nombre_transportador, styles['transportador'])
 
-    # Frame para el bloque completo (con padding interno)
     c.saveState()
     try:
-        f = Frame(X + FIELD_PADDING_PT, Y + FIELD_PADDING_PT, W - 2 *
-                  FIELD_PADDING_PT, H - 2*FIELD_PADDING_PT, showBoundary=0)
+        f = Frame(X + FIELD_PADDING_PT, Y + FIELD_PADDING_PT,
+                  W - 2*FIELD_PADDING_PT, H - 2*FIELD_PADDING_PT, showBoundary=0)
         f.addFromList([para_es, para_pt, para_firma, para_transportador], c)
     finally:
         c.restoreState()
 
-    # Fecha en la parte inferior izquierda
     c.saveState()
     try:
         c.setFont(FONT_REGULAR, 12)
@@ -601,125 +564,103 @@ def draw_campo39(c, x_px, y_px, w_px, h_px, height_px, mic_data=None):
         c.restoreState()
 
 
-# =============================
-#    FUNCIÓN ESPECIALIZADA CAMPO 40
-# =============================
-
 def draw_campo40_robust(c, x_pt, y_pt, w_pt, h_pt, valor):
     """
-    Función robusta específicamente para el Campo 40.
-    Garantiza que el texto se mantenga dentro de los límites.
+    Campo 40 usando fit_text_box_universal.
     """
     if not valor:
         return
 
-    log("🎯 Campo 40: Usando función robusta")
+    # Usar la función universal para el campo 40
+    fit_text_box_universal(c, valor, x_pt, y_pt, w_pt, h_pt, 40, FONT_REGULAR)
 
-    # Área de contenido
-    margin = 6  # Margen más pequeño para Campo 40
-    title_space = 45  # Espacio reservado para título
 
-    content_x = x_pt + margin
-    content_y = y_pt + margin
-    content_w = w_pt - 2 * margin
-    content_h = h_pt - 2 * margin - title_space
+DOC_PATTERNS = [
+    r'(CNPJ\s*:\s*[\d./-]+)',
+    r'(RUC\s*:\s*[\d.-]+)',
+    r'(Doc(?:umento)?\s*:\s*[\w\d./-]+)'
+]
 
-    if content_w <= 0 or content_h <= 0:
-        log(f"❌ Área de contenido inválida: {content_w}x{content_h}")
-        return
 
-    # Parámetros optimizados
-    font_size = 10
-    font = FONT_REGULAR
-    line_height = font_size + 1
+def _buscar_doc_en_texto(texto: str):
+    if not texto:
+        return None
+    for pat in DOC_PATTERNS:
+        m = re.search(pat, texto, flags=re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+    return None
 
-    c.saveState()
-    try:
-        c.setFont(font, font_size)
 
-        # Procesar texto línea por línea
-        input_lines = safe_clean_text(valor).split('\n')
-        final_lines = []
+def validar_entidades_33_34_35(mic_data: dict, autofix=False):
+    """
+    Valida que 33/34/35 tengan tipo_documento y numero_documento.
+    Si autofix=True, intenta extraer un doc embebido (CNPJ/RUC/Doc) de "nombre"/"direccion"
+    y lo coloca en numero_documento (tipo_documento queda vacío si no se pudo separar).
+    """
+    claves = {
+        33: 'campo_33_datos_campo1_crt',
+        34: 'campo_34_datos_campo4_crt',
+        35: 'campo_35_datos_campo6_crt',
+    }
 
-        for input_line in input_lines:
-            if not input_line.strip():
-                final_lines.append("")
-                continue
+    problemas = []
+    for n, key in claves.items():
+        val = mic_data.get(key)
+        if not isinstance(val, dict):
+            print(
+                f"⚠️ Campo {n}: no es dict o está vacío ({type(val).__name__}).")
+            problemas.append(n)
+            continue
 
-            words = input_line.split()
-            current_line = ""
+        tipo = (val.get('tipo_documento') or "").strip()
+        numero = (val.get('numero_documento') or "").strip()
 
-            for word in words:
-                test_line = (current_line + " " +
-                             word) if current_line else word
-                test_width = c.stringWidth(test_line, font, font_size)
+        if not numero:
+            # intentar extraer del nombre o dirección
+            doc_embebido = _buscar_doc_en_texto(
+                (val.get('nombre') or "") + " " + (val.get('direccion') or ""))
+            if doc_embebido and autofix:
+                # si viene como "CNPJ: 12.345..." lo ponemos entero en numero_documento
+                val['numero_documento'] = doc_embebido
+                # no forzamos tipo si no podemos separarlo
+                val.setdefault('tipo_documento', '')
+                numero = doc_embebido
 
-                if test_width <= content_w:
-                    current_line = test_line
-                else:
-                    if current_line:
-                        final_lines.append(current_line)
-                    current_line = word
+        if not numero or not tipo:  # aún falta algo
+            faltantes = []
+            if not tipo:
+                faltantes.append("tipo_documento")
+            if not numero:
+                faltantes.append("numero_documento")
+            print(f"❌ Campo {n}: faltan {', '.join(faltantes)} en {key}.")
+            problemas.append(n)
+        else:
+            print(f"✅ Campo {n}: {tipo}: {numero}")
 
-                    # Verificar si una sola palabra es muy larga
-                    if c.stringWidth(word, font, font_size) > content_w:
-                        # Truncar palabra larga
-                        while word and c.stringWidth(word, font, font_size) > content_w:
-                            word = word[:-1]
-                        current_line = word
+    if not problemas:
+        print("🎉 33/34/35 OK: todos con tipo y número de documento.")
+    else:
+        print(f"🔎 Revisa campos: {problemas} (ver mensajes arriba).")
 
-            if current_line:
-                final_lines.append(current_line)
-
-        # Calcular cuántas líneas caben
-        max_lines = int(content_h / line_height)
-        visible_lines = final_lines[:max_lines]
-
-        # Dibujar líneas
-        start_y = content_y + content_h - font_size
-        for i, line in enumerate(visible_lines):
-            line_y = start_y - (i * line_height)
-            if line_y >= content_y:  # Verificar límites
-                c.drawString(content_x, line_y, line)
-
-        # Indicador de truncamiento
-        if len(final_lines) > max_lines:
-            truncate_y = start_y - (max_lines * line_height)
-            if truncate_y >= content_y:
-                c.drawString(content_x, truncate_y, "...")
-
-        log(f"✅ Campo 40 procesado: {len(visible_lines)}/{len(final_lines)} líneas")
-
-    finally:
-        c.restoreState()
+    return problemas
 
 
 # =============================
 #   GENERADOR PRINCIPAL PDF
 # =============================
 
-def generar_micdta_pdf_con_datos(mic_data, filename="mic_{id}.pdf"):
-    # Garantizar registro por si el módulo se importó antes de tener las fuentes
+
+def generar_micdta_pdf_con_datos(mic_data: dict, filename: str = "mic.pdf"):
+    """
+    Entry point para generar el PDF del MIC/DTA.
+    Ahora TODOS los campos usan fit_text_box_universal.
+    """
     register_unicode_fonts()
 
-    log("🔄 Iniciando generación de PDF MIC...")
-    log(f"📋 Campos recibidos: {len(mic_data or {})}")
-
-    # Debug: mostrar campos no vacíos
-    if DEBUG and mic_data:
-        log("\n" + "="*50)
-        log("🔍 DATOS COMPLETOS RECIBIDOS (no vacíos):")
-        for key, value in mic_data.items():
-            if value:
-                s = str(value)
-                log(f"  {key}: {s[:100]}{'...' if len(s) > 100 else ''}")
-        log("="*50 + "\n")
-
-    # Resolución base
     width_px, height_px = 1700, 2800
     width_pt, height_pt = px2pt(width_px), px2pt(height_px)
 
-    # Preparar canvas
     c = canvas.Canvas(filename, pagesize=(width_pt, height_pt))
     c.setStrokeColorRGB(0, 0, 0)
     c.setFillColorRGB(0, 0, 0)
@@ -727,9 +668,8 @@ def generar_micdta_pdf_con_datos(mic_data, filename="mic_{id}.pdf"):
     # Encabezado
     x0, y0 = 55, 55
     rect_w, rect_h = 1616, 108.5
-    # Caja externa del encabezado
     rect_pt(c, x0, y0, rect_w, rect_h, height_px, line_width=2)
-    # Caja MIC/DTA
+
     mic_x, mic_y = x0 + 24, y0 + 15
     mic_w, mic_h = 235, 70
     mx, my, mw, mh = rect_pt(c, mic_x, mic_y, mic_w,
@@ -749,13 +689,13 @@ def generar_micdta_pdf_con_datos(mic_data, filename="mic_{id}.pdf"):
     finally:
         c.restoreState()
 
-    # DEFINICIÓN DE CAMPOS
     campos = [
         (1,  55, 162, 863, 450, "1 Nombre y domicilio del porteador",
          "Nome e endereço do transportador", "campo_1_transporte"),
         (2,  55, 610, 861, 142, "2 Rol de contribuyente",
          "Cadastro geral de contribuintes", "campo_2_numero"),
-        (3, 916, 162, 389, 169, "3 Tránsito aduanero", "Trânsito aduaneiro", None),
+        (3, 916, 162, 389, 169, "3 Tránsito aduanero",
+         "Trânsito aduaneiro", "campo_3_transporte"),
         (4, 1305, 162, 365, 167, "4 Nº", "", "campo_4_estado"),
         (5, 916, 330, 388, 115, "5 Hoja / Folha", "", "campo_5_hoja"),
         (6, 1305, 330, 365, 115, "6 Fecha de emisión",
@@ -778,18 +718,16 @@ def generar_micdta_pdf_con_datos(mic_data, filename="mic_{id}.pdf"):
         (15, 470, 1197, 445, 135, "15 Semirremolque / Remolque",
          "Semi-reboque / Reboque", "campo_15_placa_semi"),
         (16, 915, 752, 753, 163, "16 CAMION SUSTITUTO: Nombre y domicilio del",
-         "CAMINHÃO SUBSTITUTO: Nome e endereço do", "campo_16_asteriscos_1"),
+         "CAMINHÃO SUBSTITUTO: Nome e endereço do", "campo_16"),
         (17, 915, 915, 395, 140, "17 Rol de contribuyente",
-         "Cadastro geral de", "campo_17_asteriscos_2"),
-        (18, 1310, 915, 360, 140, "18 Placa del camión",
-         "Placa do", "campo_18_asteriscos_3"),
-        (19, 915, 1055, 395, 140, "19 Marca y número",
-         "Marca e número", "campo_19_asteriscos_4"),
+         "Cadastro geral de", "campo_17"),
+        (18, 1310, 915, 360, 140, "18 Placa del camión", "Placa do", "campo_18"),
+        (19, 915, 1055, 395, 140, "19 Marca y número", "Marca e número", "campo_19"),
         (20, 1310, 1055, 360, 140, "20 Capacidad de arrastre",
-         "Capacidade de tração", "campo_20_asteriscos_5"),
-        (21, 915, 1195, 395, 135, "21 AÑO", "ANO", "campo_21_asteriscos_6"),
+         "Capacidade de tração", "campo_20"),
+        (21, 915, 1195, 395, 135, "21 AÑO", "ANO", "campo_21"),
         (22, 1310, 1195, 360, 135, "22 Semirremolque / Remolque",
-         "Semi-reboque / Reboque", "campo_22_asteriscos_7"),
+         "Semi-reboque / Reboque", "campo_22"),
         (23, 55, 1330, 313, 154, "23 Nº carta de porte",
          "Nº do conhecimento", "campo_23_numero_campo2_crt"),
         (24, 366, 1330, 550, 154, "24 Aduana de destino",
@@ -828,360 +766,147 @@ def generar_micdta_pdf_con_datos(mic_data, filename="mic_{id}.pdf"):
          "Assinatura e carimbo de Alfândega de", None),
     ]
 
-    # LOOP DE CAMPOS COMPLETO CORREGIDO
     for n, x, y, w, h, titulo, subtitulo, key in campos:
         if n == 39:
-            # Campo 39 especial
             draw_campo39(c, x, y, w, h, height_px, mic_data)
             continue
 
-        # Caja
         x_pt, y_pt, w_pt, h_pt = rect_pt(
             c, x, y, w, h, height_px, line_width=1)
-
-        # Títulos (si hay)
-        tx_pt, ty_pt, tw_pt, th_pt = draw_field_title(
+        # CAMBIO: usar el área de contenido devuelta para empezar más abajo
+        cx, cy, cw, ch = draw_field_title(
             c, x_pt, y_pt, w_pt, h_pt, titulo, subtitulo)
 
-        # Campo 38: ajuste dinámico de fuente con posicionamiento exacto
-        if n == 38:
-            log(f"🎯 PROCESANDO CAMPO 38 (posicionamiento exacto)")
-            valor = (mic_data or {}).get(key, "")
+        valor = obtener_valor_campo(mic_data, key, n) if key else ""
 
-            title_height_exact = 45  # 24pt + 16pt + 5pt espacio mínimo
+        if n in [33, 34, 35] and valor:
+            valor = formatear_campo_entidad(mic_data, key)
 
-            fit = fit_text_box(
-                c,
-                valor,
-                x=x_pt,
-                y=y_pt,
-                w=w_pt,
-                h=h_pt,
-                font=FONT_REGULAR,
-                min_font=8,
-                max_font=14,
-                leading_ratio=1.3,
-                margin=15,
-                title_reserved_h=title_height_exact
-            )
-            log(f"✅ Campo 38 → fuente {fit['font_size_used']}, líneas {fit['lines_drawn']}, truncado={fit['truncated']}")
-            continue
+        # APLICAR fit_text_box_universal a TODOS los campos con valor
+        if valor and n != 39:  # El 39 tiene manejo especial
+            log(f"📝 Campo {n}: Aplicando fit_text_box_universal")
+            result = fit_text_box_universal(
+                c, valor, cx, cy, cw, ch, n, FONT_REGULAR)
+            if DEBUG:
+                log(f"   → Fuente: {result['font_size_used']}pt, Líneas: {result['lines_drawn']}, "
+                    f"Truncado: {result['truncated']}, Área: {result['effective_area']}")
 
-        # Campo 40: Usar función robusta especializada
-        if n == 40 and key and (mic_data or {}).get(key):
-            draw_campo40_robust(c, x_pt, y_pt, w_pt, h_pt, mic_data[key])
-            continue
-
-        # Campos multilínea con documentos (1, 9, 33, 34, 35)
-        if n in [1, 9, 33, 34, 35] and key and (mic_data or {}).get(key):
-            log(f"🖼️ Campo multilínea {n} con topes aplicados")
-
-            # Área interna segura para texto (debajo de título)
-            x_frame = x_pt + FIELD_PADDING_PT
-            y_frame = y_pt + FIELD_PADDING_PT
-            w_frame = w_pt - 2 * FIELD_PADDING_PT
-            h_frame = h_pt - 2 * FIELD_PADDING_PT - 30  # margen extra para no pisar títulos
-
-            # Tamaños específicos solicitados:
-            #  - Campo 1: 16 pt
-            #  - Campo 9: 15 pt
-            #  - Otros multilínea (33,34,35): 10 pt
-            if n == 1:
-                font_size_multiline = 16
-            elif n == 9:
-                font_size_multiline = 15
-            else:
-                font_size_multiline = 10
-
-            log(f"   ➜ Usando font_size={font_size_multiline}pt en campo {n} con topes")
-
-            # Usamos SIEMPRE el método simple con topes aplicados
-            draw_multiline_text_simple(
-                c,
-                mic_data[key],
-                x_frame,
-                y_frame,
-                w_frame,
-                h_frame,
-                font_size=font_size_multiline,
-                font=FONT_REGULAR,
-                margin=12  # Aplicar topes de 12pt en todos los lados
-            )
-            continue
-
-        # Campo 12: lógica de 2 líneas con topes aplicados
-        if n == 12 and key and (mic_data or {}).get(key):
-            val = str(mic_data[key])
-            lines = val.split('\n')
-
-            # Aplicar topes/márgenes
-            margin = 12
-            eff_x = x_pt + margin
-            eff_y = y_pt + margin
-            eff_w = w_pt - 2 * margin
-            eff_h = h_pt - 2 * margin
-
-            log(f"🔤 Campo 12 (2 líneas) con topes aplicados")
-
-            c.saveState()
-            try:
-                if len(lines) >= 1 and eff_w > 0 and eff_h > 0:
-                    c.setFont(FONT_REGULAR, 12)
-                    # Posición de primera línea con topes
-                    line1_y = y_pt + h_pt - TITLE_OFFSET_PT - SUBTITLE_OFFSET_PT - 34
-                    # Verificar que esté dentro de los límites verticales
-                    if line1_y >= eff_y and line1_y <= eff_y + eff_h:
-                        # Truncar texto si es muy largo para el ancho disponible
-                        text1 = lines[0]
-                        max_chars = len(text1)
-                        while max_chars > 0:
-                            test_text = text1[:max_chars]
-                            if c.stringWidth(test_text, FONT_REGULAR, 12) <= eff_w:
-                                break
-                            max_chars -= 1
-                        if max_chars > 0:
-                            c.drawString(eff_x, line1_y, text1[:max_chars])
-
-                if len(lines) >= 2 and lines[1].strip() and eff_w > 0 and eff_h > 0:
-                    c.setFont(FONT_REGULAR, 11)
-                    # Posición de segunda línea con topes
-                    line2_y = y_pt + h_pt - TITLE_OFFSET_PT - SUBTITLE_OFFSET_PT - 50
-                    # Verificar que esté dentro de los límites verticales
-                    if line2_y >= eff_y and line2_y <= eff_y + eff_h:
-                        # Truncar texto si es muy largo para el ancho disponible
-                        text2 = lines[1]
-                        max_chars = len(text2)
-                        while max_chars > 0:
-                            test_text = text2[:max_chars]
-                            if c.stringWidth(test_text, FONT_REGULAR, 11) <= eff_w:
-                                break
-                            max_chars -= 1
-                        if max_chars > 0:
-                            c.drawString(eff_x, line2_y, text2[:max_chars])
-            finally:
-                c.restoreState()
-            continue
-
-        # Campos normales con topes aplicados
-        if key and (mic_data or {}).get(key):
-            valor = str(mic_data[key])
-            size = 14
-            if n == 12 and len(valor) > 50:
-                size = 11
-
-            # Determinar si el campo necesita multilínea basado en longitud del texto
-            # Campos como 36, 37 que suelen tener texto largo necesitan multilínea
-            needs_multiline = (
-                len(valor) > 80 or  # Texto largo
-                # Campos específicos que suelen tener texto largo
-                n in [36, 37] or
-                '\n' in valor  # Texto con saltos de línea explícitos
-            )
-
-            if needs_multiline:
-                log(f"🖼️ Campo {n} (multilínea automática) con topes aplicados")
-
-                # Área interna segura para texto (debajo de título)
-                x_frame = x_pt + FIELD_PADDING_PT
-                y_frame = y_pt + FIELD_PADDING_PT
-                w_frame = w_pt - 2 * FIELD_PADDING_PT
-                h_frame = h_pt - 2 * FIELD_PADDING_PT - 30  # margen extra para no pisar títulos
-
-                # Usar método multilínea con topes
-                draw_multiline_text_simple(
-                    c,
-                    valor,
-                    x_frame,
-                    y_frame,
-                    w_frame,
-                    h_frame,
-                    font_size=size,
-                    font=FONT_REGULAR,
-                    margin=12  # Aplicar topes de 12pt en todos los lados
-                )
-            else:
-                log(f"🔤 Campo {n} (una línea) con topes aplicados")
-
-                # Área para texto (debajo de título/subtítulo)
-                text_x = x_pt
-                text_y = y_pt
-                text_w = w_pt
-                text_h = h_pt - FIELD_TITLE_RESERVED_PT  # Reservar espacio para título
-
-                # Usar la nueva función con topes
-                draw_single_line_text_with_bounds(
-                    c, valor, text_x, text_y, text_w, text_h,
-                    font_size=size, font=FONT_REGULAR, margin=12
-                )
-
-    # Rectángulo grande externo
+    # Borde exterior
     rect_pt(c, 55, 55, 1616.75, 2672.75, height_px, line_width=1)
-
     c.save()
-    log(f"✅ PDF generado exitosamente: {filename}")
-
-    # Resumen final (opcional)
-    if DEBUG:
-        campos_documentos = {
-            'campo_1_transporte': 'Transportador',
-            'campo_33_datos_campo1_crt': 'Remitente',
-            'campo_34_datos_campo4_crt': 'Destinatario',
-            'campo_35_datos_campo6_crt': 'Consignatario'
-        }
-        log("🎯 RESUMEN DE CAMPOS CON DOCUMENTOS:")
-        for key, descripcion in campos_documentos.items():
-            val = (mic_data or {}).get(key)
-            if val:
-                lines_count = len(safe_clean_text(val).split('\n'))
-                log(f"   📋 {descripcion}: {lines_count} líneas")
-            else:
-                log(f"   ❌ {descripcion}: Sin datos")
-
-        log("🎯 RESUMEN - MÉTODO DE RENDERIZADO CON TOPES:")
-        log("   📋 Campos 1, 9, 33, 34, 35 → Multilínea con topes (12pt) ✅")
-        log("   📦 Campo 38 → Ajuste dinámico con topes (15pt) ✅")
-        log("   🎯 Campo 40 → Función robusta con topes (6pt) ✅")
-        log("   📄 Campo 12 → 2 líneas con topes (12pt) ✅")
-        log("   🔤 Otros campos → 1 línea con topes (12pt) ✅")
-        log("   🛡️ TODOS LOS CAMPOS CON TOPES APLICADOS ✅")
-        log("   🔍 Debug completo: ACTIVADO ✅")
+    log(f"✅ PDF generado: {filename}")
 
 
 # =============================
-#          PRUEBA LOCAL
+#     FUNCIONES DE TESTING
 # =============================
 
-def test_campo38():
+def test_mic_pdf():
     """
-    Prueba de Campo 38 con texto largo y verificación de generación de PDF.
+    Función de prueba para generar un PDF con datos de ejemplo.
     """
-    log("🧪 INICIANDO PRUEBA DEL CAMPO 38 (versión completa)")
-    test_data = {
-        'campo_38_datos_campo11_crt': (
-            "1572 CAJAS QUE DICEN CONTENER: CARNE RESFRIADA DE BOVINO SEM OSSO "
-            "15 CAJAS DE CONTRA FILE (BIFES) (STEAK CHORIZO) (ESTANCIA 92); 42 CAJAS DE CONTRA FILE "
-            "(BIFES) (STEAK CHORIZO) (ESTANCIA 92); 42 CAJAS DE CONTRA FILE (BIFES) (STEAK CHORIZO) "
-            "(ESTANCIA 92); 158 CAJAS DE BIFE ANCHO CON HUESO (COSTELA JANELA) (ESTANCIA 92); "
-            "42 CAJAS DE PICANHA (TAPA DE CUADRIL) (ESTANCIA 92); 42 CAJAS DE LOMO (FILE MIGNON) "
-            "(ESTANCIA 92); 126 CAJAS DE EYE OF ROUND (PECETO) (ESTANCIA 92); 84 CAJAS DE ASADO DE TIRA "
-            "(COSTELA JANELA) (ESTANCIA 92); 84 CAJAS DE EYE OF ROUND (PECETO) (ESTANCIA 92) ..."
-        ),
-        'campo_1_transporte': 'EMPRESA TRANSPORTADORA TEST\nRUA TESTE 123\nCIUDAD - PAÍS',
-        'campo_6_fecha': '02/08/2025'
+    mic_data_ejemplo = {
+        'campo_1_transporte': 'TRANSPORTES EJEMPLO S.A.\nAv. Principal 123\nAsunción - Paraguay\nTeléfono: +595 21 123456',
+        'campo_2_numero': '80012345-1',
+        'campo_3_transporte': 'TRANSITO NACIONAL',
+        'campo_4_estado': 'DEFINITIVO',
+        'campo_5_hoja': '1 / 1',
+        'campo_6_fecha': '15/08/2025',
+        'campo_7_pto_seguro': 'ADUANA CENTRAL - ASUNCIÓN - PARAGUAY',
+        'campo_8_destino': 'PUERTO DE SANTOS - SÃO PAULO - BRASIL',
+        'campo_9_datos_transporte': 'JUAN PÉREZ CONDUCTOR\nCédula: 1.234.567\nLicencia Profesional: AB123456\nVencimiento: 31/12/2025',
+        'campo_10_numero': '1234567-8',
+        'campo_11_placa': 'ABC-1234',
+        'campo_12_modelo_chasis': 'MERCEDES BENZ ATEGO 2426\nChasis: WDB9704241L123456',
+        'campo_13_siempre_45': '45 TON',
+        'campo_14_anio': '2020',
+        'campo_15_placa_semi': 'REM-5678',
+        'campo_16': '******',
+        'campo_17': '******',
+        'campo_18': '******',
+        'campo_19': '******',
+        'campo_20': '******',
+        'campo_21': '******',
+        'campo_22': '******',
+        'campo_23_numero_campo2_crt': 'CRT-2025-001234',
+        'campo_24_aduana': 'ADUANA DE SANTOS - BRASIL',
+        'campo_25_moneda': 'DOLAR AMERICANO',
+        'campo_26_pais': '520-PARAGUAY',
+        'campo_27_valor_campo16': '125,500.00',
+        'campo_28_total': '8,500.00',
+        'campo_29_seguro': '1,255.00',
+        'campo_30_tipo_bultos': 'CONTENEDORES',
+        'campo_31_cantidad': '2',
+        'campo_32_peso_bruto': '28,750 KG',
+        'campo_33_datos_campo1_crt': {
+            'nombre': 'EXPORTADORA PARAGUAYA S.A.',
+            'direccion': 'Av. Mariscal López 1234',
+            'ciudad': 'Asunción',
+            'pais': 'Paraguay',
+            'tipo_documento': 'RUC',
+            'numero_documento': '80012345-1'
+        },
+        'campo_34_datos_campo4_crt': {
+            'nombre': 'IMPORTADORA BRASILEIRA LTDA.',
+            'direccion': 'Rua das Flores 567',
+            'ciudad': 'São Paulo',
+            'pais': 'Brasil',
+            'tipo_documento': 'CNPJ',
+            'numero_documento': '12.345.678/0001-90'
+        },
+        'campo_35_datos_campo6_crt': {
+            'nombre': 'AGENTE ADUANERO SANTOS',
+            'direccion': 'Porto de Santos, Armazém 15',
+            'ciudad': 'Santos',
+            'pais': 'Brasil',
+            'tipo_documento': 'CNPJ',
+            'numero_documento': '98.765.432/0001-11'
+        },
+        'campo_36_factura_despacho': 'FACTURA COMERCIAL Nº FC-2025-0567\nDECLARACIÓN DE EXPORTACIÓN Nº DE-2025-1234\nCERTIFICADO DE ORIGEN Nº CO-2025-0890\nPÓLIZA DE SEGURO Nº PS-2025-4567',
+        'campo_37_valor_manual': 'PRECINTO ADUANA: ADU-2025-789123\nPRECINTO EMPRESA: EMP-2025-456789\nPRECINTO CONTENEDOR 1: CONT-ABC123456\nPRECINTO CONTENEDOR 2: CONT-DEF789012',
+        'campo_38_datos_campo11_crt': '''CONTENEDOR 1: TCLU-1234567-8
+Marca: MAERSK LINE
+Peso tara: 2,200 KG
+Peso neto: 12,550 KG
+Mercadería: PRODUCTOS ALIMENTICIOS PROCESADOS
+- Conservas de carne bovina (300 cajas x 12 unidades)
+- Aceite de soja refinado (200 bidones x 20 litros)
+- Harina de trigo (150 bolsas x 50 kg)
+
+CONTENEDOR 2: MSKU-9876543-2
+Marca: MSC
+Peso tara: 2,300 KG
+Peso neto: 13,700 KG
+Mercadería: PRODUCTOS MANUFACTURADOS
+- Calzados de cuero (500 pares, varios modelos)
+- Textiles confeccionados (300 prendas)
+- Artículos de marroquinería (100 unidades)
+
+Valor total FOB: USD 125,500.00
+Condiciones: CIF Santos
+Incoterms 2020''',
+        'campo_40_tramo': '''DTA Nº: DTA-2025-001234
+RUTA AUTORIZADA:
+Origen: Asunción, Paraguay
+Destino: Santos, Brasil
+Tránsito por: Ciudad del Este - Foz do Iguaçu - Curitiba - São Paulo
+
+PLAZO DE TRANSPORTE: 7 días calendario
+Fecha inicio: 15/08/2025
+Fecha vencimiento: 22/08/2025
+
+OBSERVACIONES:
+- Carga refrigerada
+- Manipulación con cuidado especial
+- Seguro contratado por USD 127,000.00'''
     }
-    out = "test_campo38_corregido.pdf"
-    generar_micdta_pdf_con_datos(test_data, out)
-    if os.path.exists(out):
-        log(f"✅ PRUEBA EXITOSA: generado {out}")
-    else:
-        log("❌ PRUEBA FALLÓ: no se encontró el PDF")
 
+    print("🚀 Generando PDF de prueba con fit_text_box_universal en todos los campos...")
+    generar_micdta_pdf_con_datos(mic_data_ejemplo, "mic_test_universal.pdf")
+    print("✅ PDF de prueba generado: mic_test_universal.pdf")
 
-def test_campo40_desbordamiento():
-    """
-    Prueba específica para el campo 40 que se desborda.
-    """
-    log("🧪 INICIANDO PRUEBA DEL CAMPO 40 (desbordamiento)")
-    test_data = {
-        'campo_40_tramo': (
-            "ORIGEN: CAMPESTRE S.A.-CIUDAD DEL ESTE SALIDA: CIUDAD DEL ESTE-CIUDAD DEL ESTE "
-            "DESTINO: PUERTO DE SANTOS-BRASIL RUTA: BR-277, BR-116, SP-150 "
-            "PLAZO: 72 HORAS DESDE LA SALIDA"
-        ),
-        'campo_1_transporte': 'EMPRESA TRANSPORTADORA TEST',
-        'campo_6_fecha': '02/08/2025'
-    }
-    out = "test_campo40_topes.pdf"
-    generar_micdta_pdf_con_datos(test_data, out)
-    if os.path.exists(out):
-        log(f"✅ PRUEBA CAMPO 40 EXITOSA: generado {out}")
-    else:
-        log("❌ PRUEBA CAMPO 40 FALLÓ: no se encontró el PDF")
-
-
-def test_campo38_ajuste_dinamico():
-    """
-    Prueba del ajuste dinámico de tamaño en campo 38 con diferentes cantidades de texto.
-    """
-    log("🧪 INICIANDO PRUEBA CAMPO 38 - AJUSTE DINÁMICO DE TAMAÑO")
-
-    # Texto corto - debería usar fuente grande (cerca de 14pt)
-    test_data_corto = {
-        'campo_38_datos_campo11_crt': "TEXTO CORTO PARA PROBAR FUENTE GRANDE",
-        'campo_1_transporte': 'EMPRESA TEST',
-        'campo_6_fecha': '02/08/2025'
-    }
-
-    # Texto medio - debería usar fuente intermedia
-    test_data_medio = {
-        'campo_38_datos_campo11_crt': (
-            "TEXTO MEDIO PARA PROBAR AJUSTE AUTOMÁTICO DE FUENTE. "
-            "ESTE TEXTO TIENE MÁS CONTENIDO QUE EL ANTERIOR PERO NO ES EXCESIVAMENTE LARGO. "
-            "DEBERÍA USAR UNA FUENTE INTERMEDIA ENTRE 8 Y 14 PUNTOS."
-        ),
-        'campo_1_transporte': 'EMPRESA TEST',
-        'campo_6_fecha': '02/08/2025'
-    }
-
-    # Texto largo - debería usar fuente pequeña (cerca de 8pt)
-    test_data_largo = {
-        'campo_38_datos_campo11_crt': (
-            "1572 CAJAS QUE DICEN CONTENER: CARNE RESFRIADA DE BOVINO SEM OSSO "
-            "15 CAJAS DE CONTRA FILE (BIFES) (STEAK CHORIZO) (ESTANCIA 92); 42 CAJAS DE CONTRA FILE "
-            "(BIFES) (STEAK CHORIZO) (ESTANCIA 92); 42 CAJAS DE CONTRA FILE (BIFES) (STEAK CHORIZO) "
-            "(ESTANCIA 92); 158 CAJAS DE BIFE ANCHO CON HUESO (COSTELA JANELA) (ESTANCIA 92); "
-            "42 CAJAS DE PICANHA (TAPA DE CUADRIL) (ESTANCIA 92); 42 CAJAS DE LOMO (FILE MIGNON) "
-            "(ESTANCIA 92); 126 CAJAS DE EYE OF ROUND (PECETO) (ESTANCIA 92); 84 CAJAS DE ASADO DE TIRA "
-            "(COSTELA JANELA) (ESTANCIA 92); 84 CAJAS DE EYE OF ROUND (PECETO) (ESTANCIA 92); "
-            "PESO BRUTO: 3.904,614 KG; PESO NETO: 3.654,574 KG; NCM: 0201.20.00; "
-            "FACTURA COMERCIAL: 001-002-0000954; CERTIFICADO SANITARIO: SENACSA-2025-001"
-        ),
-        'campo_1_transporte': 'EMPRESA TEST',
-        'campo_6_fecha': '02/08/2025'
-    }
-
-    # Generar PDFs para cada caso
-    casos = [
-        (test_data_corto, "test_campo38_texto_corto.pdf", "CORTO"),
-        (test_data_medio, "test_campo38_texto_medio.pdf", "MEDIO"),
-        (test_data_largo, "test_campo38_texto_largo.pdf", "LARGO")
-    ]
-
-    for data, filename, tipo in casos:
-        log(f"\n--- GENERANDO PDF PARA TEXTO {tipo} ---")
-        generar_micdta_pdf_con_datos(data, filename)
-        if os.path.exists(filename):
-            log(f"✅ PRUEBA TEXTO {tipo} EXITOSA: generado {filename}")
-        else:
-            log(f"❌ PRUEBA TEXTO {tipo} FALLÓ: no se encontró {filename}")
-
-    log("\n🎯 RESUMEN: Se generaron 3 PDFs para demostrar el ajuste dinámico de fuente")
-    log("   📄 Texto corto → fuente grande (cerca de 14pt)")
-    log("   📄 Texto medio → fuente intermedia (10-12pt)")
-    log("   📄 Texto largo → fuente pequeña (cerca de 8pt)")
-    log("   📍 En todos los casos, el texto empieza justo debajo del título")
-
-
-# =============================
-#        PUNTO DE ENTRADA
-# =============================
 
 if __name__ == "__main__":
-    # 1) Registrar fuentes Unicode (DejaVuSans) con fallback automático
-    register_unicode_fonts()
-
-    log("📋 CÓDIGO COMPLETO MIC/DTA PDF - Versión robusta")
-    log("🎯 Highlights:")
-    log("   ✅ Campo 38 con ajuste dinámico (búsqueda binaria) y márgenes")
-    log("   ✅ Fuentes Unicode (DejaVuSans) para acentos/ñ/ç")
-    log("   ✅ Helpers px→pt y coordenadas consistentes")
-    log("   ✅ saveState()/restoreState() para aislar estilos")
-    log("   ✅ Estilos cacheados y refactors de cajas/títulos")
-    log("   ✅ Debug detallado activable")
-
-    # 2) Ejecutar prueba opcional:
-    # test_campo38()
-
-    # Si querés generar con tus datos reales:
-    # mic_data = {...}
-    # generar_micdta_pdf_con_datos(mic_data, "mic_real.pdf")
+    # Activar debug para ver los logs
+    DEBUG = True
+    test_mic_pdf()
